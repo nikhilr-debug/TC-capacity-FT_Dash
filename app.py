@@ -64,7 +64,7 @@ header { background: transparent !important; }
   max-width: 1440px !important;
 }
 
-div[data-testid="stHorizontalBlock"] { gap: 0 !important; }
+div[data-testid="stHorizontalBlock"] { gap: 1rem !important; }
 div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
 
 .dash-header {
@@ -229,8 +229,55 @@ div[data-baseweb="tab-list"] {
   padding: 3px !important;
   gap: 2px !important;
 }
-div[data-baseweb="tab-highlight"] { display: none !important; }
-div[data-baseweb="tab-border"]    { display: none !important; }
+
+/* Custom RCA (AI Narrative) Styling */
+.rca-card {
+  background: var(--surface);
+  border: 1px solid var(--br2);
+  border-radius: var(--rl);
+  padding: 20px;
+  margin-bottom: 15px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.rca-ttl {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--text);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rca-body {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+.rca-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 10px;
+  background: var(--surface2);
+  border-radius: var(--r);
+  border-left: 3px solid transparent;
+}
+.rca-item.positive { border-left-color: var(--green); }
+.rca-item.negative { border-left-color: var(--red); }
+.rca-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
+.dot-g { background: var(--green); }
+.dot-r { background: var(--red); }
+.dot-b { background: var(--blue); }
+
+/* Filter Container Styling */
+.inline-filter-container {
+    background: var(--surface2);
+    padding: 10px 15px;
+    border-radius: var(--r);
+    border: 1px solid var(--br);
+    margin-bottom: 15px;
+}
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
@@ -486,13 +533,13 @@ if "vl_name" in df_tc_raw.columns:
 today = datetime.date.today()
 yesterday = today - datetime.timedelta(days=1)
 
-# ── Sidebar Controls & Filters ────────────────────────────────────────────────
+# ── Sidebar Controls & Filters (Global & FT Focused) ──────────────────────────
 st.sidebar.markdown("### 🛠️ Data Controls")
 if st.sidebar.button("🔄 Force Refresh Data", type="primary"):
     st.cache_data.clear()
     st.rerun()
 
-st.sidebar.markdown("### 🎛️ Parameters")
+st.sidebar.markdown("### 🎛️ Global Parameters")
 mode = st.sidebar.selectbox("FT Comparison Window Mode", ["WTD", "MTD"])
 tc_time_filter = st.sidebar.number_input("TC Capacity N-Weeks Default", min_value=1, max_value=12, value=6)
 exclude_current = st.sidebar.checkbox("Exclude Current Incomplete Week", value=False)
@@ -523,20 +570,10 @@ def get_windows(mode, exclude_current):
 
 cs, ce, ps, pe = get_windows(mode, exclude_current)
 
-st.sidebar.markdown("### 🔍 Global Segment Filters")
+st.sidebar.markdown("### 🔍 Placements (FT) Filters")
 
 client_opts = sorted(list(df_base["company_name"].dropna().unique())) if "company_name" in df_base.columns else []
-selected_clients = st.sidebar.multiselect("Client Scope (FT Only)", client_opts, key="global_filter_client")
-
-all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
-if exclude_current and len(all_weeks) > 0: all_weeks = all_weeks[1:]
-sel_weeks = st.sidebar.multiselect("Week Scope (TC Only)", all_weeks, default=all_weeks[:tc_time_filter])
-
-cohort_opts = sorted(df_tc_raw["cohort"].dropna().unique()) if "cohort" in df_tc_raw.columns else []
-sel_cohorts = st.sidebar.multiselect("Cohort Scope (TC Only)", cohort_opts)
-
-channel_opts = sorted(df_tc_raw["Channel"].dropna().unique()) if "Channel" in df_tc_raw.columns else []
-sel_channels = st.sidebar.multiselect("Channel Scope (TC Only)", channel_opts)
+selected_clients = st.sidebar.multiselect("Client Scope", client_opts, key="global_filter_client")
 
 reg_ft = set(df_base["region"].dropna()) if "region" in df_base.columns else set()
 reg_tc = set(df_tc_raw["region"].dropna()) if "region" in df_tc_raw.columns else set()
@@ -627,6 +664,7 @@ def filter_target_df(target_df, col_name, selected_items):
         return target_df[target_df[col_name].isin(selected_items_title)]
     return target_df
 
+# FT Data Application
 if selected_clients and "company_name" in df.columns: 
     df = df[df["company_name"].isin(selected_clients)]
     t_df = filter_target_df(t_df, 'company_name', selected_clients)
@@ -637,9 +675,6 @@ if selected_vls:
     if "vl_name" in df.columns: df = df[df["vl_name"].isin(selected_vls)]
     t_df = filter_target_df(t_df, 'vl_name', selected_vls)
     if "vl_name" in df_tc.columns: df_tc = df_tc[df_tc["vl_name"].isin(selected_vls)]
-if sel_weeks and "Week_start" in df_tc.columns: df_tc = df_tc[df_tc["Week_start"].isin(sel_weeks)]
-if sel_cohorts and "cohort" in df_tc.columns: df_tc = df_tc[df_tc["cohort"].isin(sel_cohorts)]
-if sel_channels and "Channel" in df_tc.columns: df_tc = df_tc[df_tc["Channel"].isin(sel_channels)]
 
 days_elapsed = (ce - cs).days + 1
 if mode == "WTD": total_days = 7
@@ -722,7 +757,6 @@ vl_master = compute_comparison_matrix(df, "vl_name", t_df)
 vl_by_client_mat = compute_comparison_matrix(df, ["vl_name", "company_name"], t_df)
 reg_mat = compute_comparison_matrix(df, "region", t_df)
 
-# Target KPIs pulled explicitly from t_df so it accounts for Target Adjustments unlisted in SQL
 total_target = int(t_df['target'].sum()) if not t_df.empty else 0
 gap_tot = proj_tot - total_target
 gap_tot_pct = (gap_tot / total_target * 100) if total_target > 0 else np.nan
@@ -934,8 +968,20 @@ with tab1:
 # TAB 2: TC CAPACITY VIEW
 # ==============================================================================
 with tab2:
-    cur_wk_date = all_weeks[0] if all_weeks else None
-    cur_wk_data = df_tc[df_tc["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
+    all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
+    if exclude_current and len(all_weeks) > 0: all_weeks = all_weeks[1:]
+
+    # TC Global Week Filter
+    st.markdown('<div class="inline-filter-container">', unsafe_allow_html=True)
+    tc_sel_weeks = st.multiselect("📅 Select Trailing Weeks (Applies globally to all TC Views)", all_weeks, default=all_weeks[:tc_time_filter], key="tc_global_week_filter")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    df_tc_filtered = df_tc.copy()
+    if tc_sel_weeks: 
+        df_tc_filtered = df_tc_filtered[df_tc_filtered["Week_start"].isin(tc_sel_weeks)]
+
+    cur_wk_date = tc_sel_weeks[0] if tc_sel_weeks else (all_weeks[0] if all_weeks else None)
+    cur_wk_data = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
     
     target_row = df_tc_targets[df_tc_targets["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
     overall_target = target_row["Overall Addition"].values[0] if not target_row.empty else 0
@@ -962,7 +1008,7 @@ with tab2:
         if label == "Net Additions" and isinstance(val, (int, float)):
             if val > 0: text_color = "var(--green)"
             elif val < 0: text_color = "var(--red)"
-        col.markdown(f'<div class="kpi" style="padding:10px;"><div class="kpi-lbl" style="font-size:9px;">{label}</div><div class="kpi-val" style="font-size:20px; color:{text_color};">{val:,}</div></div>', unsafe_allow_html=True)
+        col.markdown(f'<div class="kpi" style="padding:10px;"><div class="kpi-lbl" style="font-size:9px;">{label} <span style="color:var(--faint); font-weight:400; text-transform:none;">({cur_wk_date})</span></div><div class="kpi-val" style="font-size:20px; color:{text_color};">{val:,}</div></div>', unsafe_allow_html=True)
 
     st.markdown('<div class="sec-ttl">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
 
@@ -1046,19 +1092,30 @@ with tab2:
         cols_order = [group_col, "Week Start", "Active TCs", "Existing TCs", "Resurrected TCs", "Churned TCs", "New TCs", "Targets", "Net New Additions"]
         return res_df[[c for c in cols_order if c in res_df.columns]]
 
-    # ── Using st.dataframe restores the Streamlit Canvas (and its toolbar) ──
-    with st.expander("📊 Channel View Drill-down"):
-        df_channel = get_standard_table(df_tc, "Channel")
+    with st.expander("📊 Channel View Drill-down", expanded=True):
+        channel_opts = sorted(df_tc_filtered["Channel"].dropna().unique()) if "Channel" in df_tc_filtered.columns else []
+        sel_tc_channels = st.multiselect("Filter specific Channels", channel_opts, default=channel_opts, key="tc_in_chan")
+        df_tc_ch = df_tc_filtered[df_tc_filtered["Channel"].isin(sel_tc_channels)] if sel_tc_channels else df_tc_filtered.copy()
+
+        df_channel = get_standard_table(df_tc_ch, "Channel")
         if not df_channel.empty:
             st.dataframe(style_tc_dataframe(df_channel, "Channel"), use_container_width=True, hide_index=True)
             
     with st.expander("📍 Region View Drill-down"):
-        df_region = get_standard_table(df_tc, "region")
+        region_opts = sorted(df_tc_filtered["region"].dropna().unique()) if "region" in df_tc_filtered.columns else []
+        sel_tc_regions = st.multiselect("Filter specific Regions", region_opts, default=region_opts, key="tc_in_reg")
+        df_tc_reg = df_tc_filtered[df_tc_filtered["region"].isin(sel_tc_regions)] if sel_tc_regions else df_tc_filtered.copy()
+
+        df_region = get_standard_table(df_tc_reg, "region")
         if not df_region.empty:
             st.dataframe(style_tc_dataframe(df_region, "region"), use_container_width=True, hide_index=True)
             
     with st.expander("👥 Cohort View Drill-down"):
-        df_cohort = get_standard_table(df_tc, "cohort")
+        cohort_opts = sorted(df_tc_filtered["cohort"].dropna().unique()) if "cohort" in df_tc_filtered.columns else []
+        sel_tc_cohorts = st.multiselect("Filter specific Cohorts", cohort_opts, default=cohort_opts, key="tc_in_coh")
+        df_tc_coh = df_tc_filtered[df_tc_filtered["cohort"].isin(sel_tc_cohorts)] if sel_tc_cohorts else df_tc_filtered.copy()
+
+        df_cohort = get_standard_table(df_tc_coh, "cohort")
         if not df_cohort.empty:
             st.dataframe(style_tc_dataframe(df_cohort, "cohort"), use_container_width=True, hide_index=True)
         
@@ -1068,12 +1125,12 @@ with tab2:
         tc_sort_col = col2.selectbox("Sort Priority By", ["net_new_additions", "active_tcs", "new_tcs", "churned_tcs", "existing_tcs"], index=0)
         tc_trend = col3.radio("Trend View (TC)", ["Top Performers", "Bottom Performers"], horizontal=True)
         
-        tc_channel_opts = sorted(df_tc_raw["Channel"].dropna().unique()) if "Channel" in df_tc_raw.columns else []
-        tc_channels = col4.multiselect("Filter by Channel (TC Specific)", tc_channel_opts, key="tc_exp_chan")
+        tc_channel_opts = sorted(df_tc_filtered["Channel"].dropna().unique()) if "Channel" in df_tc_filtered.columns else []
+        tc_channels_flt = col4.multiselect("Filter by Channel (TC Specific)", tc_channel_opts, key="tc_exp_chan")
         
-        tmp_tc = df_tc.copy()
-        if tc_channels and "Channel" in tmp_tc.columns:
-            tmp_tc = tmp_tc[tmp_tc["Channel"].isin(tc_channels)]
+        tmp_tc = df_tc_filtered.copy()
+        if tc_channels_flt and "Channel" in tmp_tc.columns:
+            tmp_tc = tmp_tc[tmp_tc["Channel"].isin(tc_channels_flt)]
             
         if not tmp_tc.empty and "Week_start" in tmp_tc.columns:
             is_tc_asc = True if "Bottom" in tc_trend else False
@@ -1093,53 +1150,118 @@ with tab2:
 # TAB 3: AI NARRATIVE & RCA
 # ==============================================================================
 with tab3:
-    section("Programmatic Executive Summary & Attribution (Placements Only)")
+    ai_col1, ai_col2 = st.columns(2)
     
-    pool = []
-    if not client_mat.empty:
-        for _, r in client_mat.iterrows(): pool.append({"type": "Client Profile", "name": r['company_name'], "delta": r["delta"]})
-    if not reg_mat.empty:
-        for _, r in reg_mat.iterrows():    pool.append({"type": "Regional Cluster", "name": r['region'], "delta": r["delta"]})
-    if not vl_master.empty:
-        for _, r in vl_master.iterrows():   pool.append({"type": "Vendor Line Partner (VL)", "name": r['vl_name'], "delta": r["delta"]})
-    
-    m_df = pd.DataFrame(pool, columns=["type", "name", "delta"]).dropna()
-    leaders = m_df[m_df["delta"] > 0].nlargest(3, "delta") if not m_df.empty else pd.DataFrame()
-    laggards = m_df[m_df["delta"] < 0].nsmallest(3, "delta") if not m_df.empty else pd.DataFrame()
-    
-    trend_term = "an operational contraction" if dlt_tot < 0 else "an upward expansion trend"
-    hl_color = "var(--red)" if dlt_tot < 0 else "var(--green)"
-    
-    st.markdown(f"""
-    <div class="rca-card">
-      <div class="rca-ttl">Performance Review Narrative</div>
-      <div class="rca-body">
-        Data matching current parameters logs {trend_term} yielding a global net variation of 
-        <strong style="color:{hl_color}">{fmt(dlt_tot)} total placements (FT)</strong> ({pct_tot:+.1f}%) 
-        compared to the relative historical cycle baseline. Absolute volume shifted from <strong>{fmt(prv_tot)}</strong> 
-        units to <strong>{fmt(cur_tot)}</strong> active placements inside the evaluated window frame.
-      </div>
-    </div>""", unsafe_allow_html=True)
+    # --- FT PLACEMENTS INSIGHTS ---
+    with ai_col1:
+        section("📦 Programmatic Placements Execution (FT)")
+        
+        pool = []
+        if not client_mat.empty:
+            for _, r in client_mat.iterrows(): pool.append({"type": "Client Profile", "name": r['company_name'], "delta": r["delta"]})
+        if not reg_mat.empty:
+            for _, r in reg_mat.iterrows():    pool.append({"type": "Regional Cluster", "name": r['region'], "delta": r["delta"]})
+        if not vl_master.empty:
+            for _, r in vl_master.iterrows():   pool.append({"type": "Vendor Line Partner", "name": r['vl_name'], "delta": r["delta"]})
+        
+        m_df = pd.DataFrame(pool, columns=["type", "name", "delta"]).dropna()
+        leaders = m_df[m_df["delta"] > 0].nlargest(3, "delta") if not m_df.empty else pd.DataFrame()
+        laggards = m_df[m_df["delta"] < 0].nsmallest(3, "delta") if not m_df.empty else pd.DataFrame()
+        
+        trend_term = "an operational contraction" if dlt_tot < 0 else "an upward expansion trend"
+        hl_color = "var(--red)" if dlt_tot < 0 else "var(--green)"
+        
+        st.markdown(f"""
+        <div class="rca-card">
+          <div class="rca-ttl">Placement Trend Diagnostic</div>
+          <div class="rca-body">
+            Filtered pipeline vectors indicate {trend_term}, executing a net delta of 
+            <strong style="color:{hl_color}">{fmt(dlt_tot)} total placements</strong> ({pct_tot:+.1f}%) 
+            against the historical comparative baseline. Overall supply transitioned from <strong>{fmt(prv_tot)}</strong> 
+            to <strong>{fmt(cur_tot)}</strong> successful operations inside the evaluated timeframe.
+          </div>
+        </div>""", unsafe_allow_html=True)
 
-    as_left, as_right = st.columns(2)
-    with as_left:
-        st.markdown('<div class="rca-card"><div class="rca-ttl">Primary Positive Drivers</div>', unsafe_allow_html=True)
+        st.markdown('<div class="rca-card"><div class="rca-ttl">Leading Pipeline Drivers</div>', unsafe_allow_html=True)
         if not leaders.empty:
             for _, r in leaders.iterrows():
-                st.markdown(f"""<div class="rca-item"><div class="rca-dot dot-g"></div>
-                    <div><strong>[{r['type']}]</strong> {r['name']} — net change of <span style="color:var(--green); font-weight:700;">+{int(r['delta']):,}</span> placements.</div>
+                st.markdown(f"""<div class="rca-item positive"><div class="rca-dot dot-g"></div>
+                    <div><strong>[{r['type']}]</strong> {r['name']} <br> Net yield of <span style="color:var(--green); font-weight:700;">+{int(r['delta']):,}</span> surplus placements.</div>
                 </div>""", unsafe_allow_html=True)
         else:
-            st.markdown('<div style="color:var(--muted); font-size:12px;">No active vectors recorded growth steps during this cycle.</div>', unsafe_allow_html=True)
+            st.markdown('<div style="color:var(--muted); font-size:12px;">No growth vectors successfully recorded in current scope.</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
-    with as_right:
-        st.markdown('<div class="rca-card"><div class="rca-ttl">Primary Deficit Contributors</div>', unsafe_allow_html=True)
+        st.markdown('<div class="rca-card"><div class="rca-ttl">Primary Deficit Constrictions</div>', unsafe_allow_html=True)
         if not laggards.empty:
             for _, r in laggards.iterrows():
-                st.markdown(f"""<div class="rca-item"><div class="rca-dot dot-r"></div>
-                    <div><strong>[{r['type']}]</strong> {r['name']} — net change of <span style="color:var(--red); font-weight:700;">{int(r['delta']):,}</span> placements.</div>
+                st.markdown(f"""<div class="rca-item negative"><div class="rca-dot dot-r"></div>
+                    <div><strong>[{r['type']}]</strong> {r['name']} <br> Contracted by <span style="color:var(--red); font-weight:700;">{int(r['delta']):,}</span> placements.</div>
                 </div>""", unsafe_allow_html=True)
         else:
-            st.markdown('<div style="color:var(--muted); font-size:12px;">No active vectors logged shortfalls during this cycle.</div>', unsafe_allow_html=True)
+            st.markdown('<div style="color:var(--muted); font-size:12px;">No major deficit constraints detected across active vectors.</div>', unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
+
+    # --- TC CAPACITY INSIGHTS ---
+    with ai_col2:
+        section("⚡ Capacity & Acquisition Trajectory (TC)")
+        
+        if not df_tc_filtered.empty and "Week_start" in df_tc_filtered.columns:
+            tc_target_met = kpi_net_additions - overall_target
+            tc_term = "surpassed" if tc_target_met >= 0 else "underperformed against"
+            tc_color = "var(--green)" if tc_target_met >= 0 else "var(--red)"
+            
+            st.markdown(f"""
+            <div class="rca-card">
+              <div class="rca-ttl">Network Capacity Diagnostic ({cur_wk_date})</div>
+              <div class="rca-body">
+                The most recently filtered capacity cycle resolved with <strong>{kpi_active:,}</strong> Active TCs. 
+                Net Acquisition operations yielded <strong style="color:var(--text)">{kpi_net_additions:,}</strong> Net New additions. 
+                Based on target modeling, execution {tc_term} expected addition quotas by 
+                <strong style="color:{tc_color}">{abs(tc_target_met):,}</strong> units.
+              </div>
+            </div>""", unsafe_allow_html=True)
+            
+            # Segment Aggregations for TC
+            ch_agg = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date].groupby("Channel")["net_new_additions"].sum().sort_values(ascending=False) if cur_wk_date else pd.Series()
+            reg_agg = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date].groupby("region")["net_new_additions"].sum().sort_values(ascending=False) if cur_wk_date else pd.Series()
+            
+            st.markdown('<div class="rca-card"><div class="rca-ttl">Acquisition Engine Performance</div>', unsafe_allow_html=True)
+            if not ch_agg.empty:
+                top_ch = ch_agg.index[0]
+                top_ch_val = ch_agg.iloc[0]
+                bot_ch = ch_agg.index[-1]
+                bot_ch_val = ch_agg.iloc[-1]
+                
+                st.markdown(f"""<div class="rca-item positive"><div class="rca-dot dot-b"></div>
+                    <div><strong>Leading Channel Engine:</strong> {top_ch} <br> Originated <span style="color:var(--green); font-weight:700;">{int(top_ch_val):,}</span> Net Additions in latest cycle.</div>
+                </div>""", unsafe_allow_html=True)
+                
+                if top_ch != bot_ch and bot_ch_val <= 0:
+                    st.markdown(f"""<div class="rca-item negative"><div class="rca-dot dot-r"></div>
+                        <div><strong>Underperforming Channel:</strong> {bot_ch} <br> Churn outpaced acquisition resulting in <span style="color:var(--red); font-weight:700;">{int(bot_ch_val):,}</span> Net Additions.</div>
+                    </div>""", unsafe_allow_html=True)
+            else:
+                 st.markdown('<div style="color:var(--muted); font-size:12px;">Insufficient active channel data for insight extraction.</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            st.markdown('<div class="rca-card"><div class="rca-ttl">Regional Capacity Execution</div>', unsafe_allow_html=True)
+            if not reg_agg.empty:
+                top_reg = reg_agg.index[0]
+                top_reg_val = reg_agg.iloc[0]
+                bot_reg = reg_agg.index[-1]
+                bot_reg_val = reg_agg.iloc[-1]
+                
+                st.markdown(f"""<div class="rca-item positive"><div class="rca-dot dot-b"></div>
+                    <div><strong>Primary Expansion Zone:</strong> {top_reg} <br> Supplied <span style="color:var(--green); font-weight:700;">{int(top_reg_val):,}</span> Net Additions to network footprint.</div>
+                </div>""", unsafe_allow_html=True)
+                
+                if top_reg != bot_reg and bot_reg_val <= 0:
+                    st.markdown(f"""<div class="rca-item negative"><div class="rca-dot dot-r"></div>
+                        <div><strong>Vulnerable Footprint:</strong> {bot_reg} <br> Recorded net contraction of <span style="color:var(--red); font-weight:700;">{int(bot_reg_val):,}</span> capacity elements.</div>
+                    </div>""", unsafe_allow_html=True)
+            else:
+                 st.markdown('<div style="color:var(--muted); font-size:12px;">Insufficient regional data for insight extraction.</div>', unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
+        else:
+             st.markdown('<div class="rca-card" style="color:var(--muted); font-size:13px;">No TC data available for AI insight generation based on current week filters.</div>', unsafe_allow_html=True)
