@@ -311,19 +311,19 @@ def fetch_targets_mtd():
 def fetch_targets_wtd(target_type, week_num):
     week_keys = [25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
     overall_dict = {
-        'Blinkit': [3537, 3760, 3760, 3760, 3960, 4177, 4277, 4427, 4577, 4829, 4929, 4979, 4979, 4979, 4979],
+        'Blinkit': [3537, 3537, 3760, 3760, 3760, 3960, 4177, 4277, 4427, 4577, 4829, 4929, 4979, 4979, 4979],
         'Swiggy Food': [887, 1243, 1314, 1428, 1685, 1929, 2171, 2418, 2763, 3019, 3269, 3574, 3876, 4223, 4488],
         'Swiggy IM': [555, 718, 757, 849, 992, 1124, 1264, 1398, 1590, 1738, 1882, 2052, 2221, 2419, 2566],
         'SOC': [37, 37, 77, 112, 187, 262, 312, 387, 487, 587, 587, 637, 637, 687, 687],
         'FKM': [135, 0, 40, 110, 170, 200, 250, 300, 350, 400, 500, 550, 550, 600, 600],
         'Uber': [28, 45, 127, 187, 299, 383, 519, 592, 738, 907, 1115, 1298, 1450, 1603, 1631],
-        'Rapido': [0, 0, 0, 75, 200, 300, 380, 500, 600, 700, 800, 900, 1000, 1000, 1000],
+        'Rapido': [0, 0, 75, 200, 300, 380, 500, 600, 700, 800, 900, 1000, 1000, 1000, 0],
         '4W': [50, 67, 97, 115, 167, 194, 261, 298, 381, 456, 570, 640, 740, 800, 828],
         'Picker Packer': [263, 263, 283, 303, 323, 333, 363, 363, 388, 598, 465, 758, 645, 938, 825],
         'Bigbasket': [0, 43, 43, 64, 144, 186, 333, 375, 508, 700, 918, 1000, 1200, 1383, 1463],
         'Amazon': [0, 9, 9, 13, 40, 54, 90, 104, 142, 197, 273, 320, 370, 441, 458],
         'XB': [28, 37, 37, 50, 67, 80, 128, 146, 205, 254, 331, 388, 473, 539, 586],
-        'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
+        'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
         'Small Clients': [0, 0, 0, 20, 50, 100, 150, 200, 300, 400, 500, 550, 600, 600, 600]
     }
     vl_dict = {
@@ -550,6 +550,60 @@ df = df_base.copy()
 t_df = tgt_base.copy()
 df_tc = df_tc_raw.copy()
 
+# Fix for target mapping replication: enforce strictly granular matching
+def compute_comparison_matrix(dataframe, group_key, target_df=None):
+    if ft not in dataframe.columns: return pd.DataFrame()
+    group_cols = group_key if isinstance(group_key, list) else [group_key]
+    
+    c = dataframe[(dataframe[ft] >= cs) & (dataframe[ft] <= ce)].groupby(group_cols).size().rename("cur")
+    p = dataframe[(dataframe[ft] >= ps) & (dataframe[ft] <= pe)].groupby(group_cols).size().rename("prv")
+    l4w = dataframe[(dataframe[ft] >= l4w_s) & (dataframe[ft] <= l4w_e)].groupby(group_cols).size().rename("l4w")
+    
+    res = pd.concat([c, p, l4w], axis=1).reset_index()
+    if not res.empty:
+        for k in group_cols:
+            if k in res.columns:
+                res[k] = res[k].fillna("Unattributed").astype(str).str.strip().str.title()
+        res = res.groupby(group_cols, as_index=False)[['cur', 'prv', 'l4w']].sum()
+
+    if target_df is not None and not target_df.empty:
+        missing_cols = [k for k in group_cols if k not in target_df.columns]
+        if not missing_cols:  # Enforce exact granularity matching
+            keys_to_merge = group_cols
+            t_df_temp = target_df.copy()
+            for k in keys_to_merge:
+                t_df_temp[k] = t_df_temp[k].fillna("Unattributed").astype(str).str.strip().str.title()
+            
+            t_agg = t_df_temp.groupby(keys_to_merge)['target'].sum().reset_index()
+            
+            if not res.empty: res = pd.merge(res, t_agg, on=keys_to_merge, how="outer")
+            else:
+                res = t_agg
+                res["cur"], res["prv"], res["l4w"] = 0, 0, 0
+        else: res["target"] = 0
+    else:
+        if res.empty: res = pd.DataFrame(columns=group_cols + ["cur", "prv", "l4w", "target"])
+        else: res["target"] = 0
+            
+    for col in ["cur", "prv", "l4w", "target"]:
+        if col not in res.columns: res[col] = 0
+        res[col] = res[col].fillna(0).astype(int)
+        
+    res["delta"] = res["cur"] - res["prv"]
+    res["pct"] = np.where(res["prv"] > 0, (res["delta"] / res["prv"]) * 100, np.nan)
+    res["proj"] = (res["cur"] + (res["l4w"] / 28.0) * remaining_days).round().astype(int)
+    res["gap"] = res["proj"] - res["target"]
+    res["gap_pct"] = np.where(res["target"] > 0, (res["gap"] / res["target"]) * 100, np.nan)
+    
+    res["contr"] = 0.0
+    sum_pos = res.loc[res['delta'] > 0, 'delta'].sum()
+    sum_neg = res.loc[res['delta'] < 0, 'delta'].sum()
+    
+    if sum_pos > 0: res["contr"] = np.where(res['delta'] > 0, (res['delta'] / sum_pos) * 100, res["contr"])
+    if sum_neg < 0: res["contr"] = np.where(res['delta'] < 0, -(res['delta'] / sum_neg) * 100, res["contr"])
+    
+    return res
+
 def filter_target_df(target_df, col_name, selected_items):
     if col_name in target_df.columns:
         target_df[col_name] = target_df[col_name].fillna("Unattributed").astype(str).str.strip().str.title()
@@ -618,58 +672,6 @@ def kpi_html(label, value, sub="", pill_html=""):
       <div class="kpi-val">{value}</div>
       <div class="kpi-sub">{sub} {pill_html}</div>
     </div>"""
-
-def compute_comparison_matrix(dataframe, group_key, target_df=None):
-    if ft not in dataframe.columns: return pd.DataFrame()
-    group_cols = group_key if isinstance(group_key, list) else [group_key]
-    
-    c = dataframe[(dataframe[ft] >= cs) & (dataframe[ft] <= ce)].groupby(group_cols).size().rename("cur")
-    p = dataframe[(dataframe[ft] >= ps) & (dataframe[ft] <= pe)].groupby(group_cols).size().rename("prv")
-    l4w = dataframe[(dataframe[ft] >= l4w_s) & (dataframe[ft] <= l4w_e)].groupby(group_cols).size().rename("l4w")
-    
-    res = pd.concat([c, p, l4w], axis=1).reset_index()
-    if not res.empty:
-        for k in group_cols:
-            if k in res.columns:
-                res[k] = res[k].fillna("Unattributed").astype(str).str.strip().str.title()
-        res = res.groupby(group_cols, as_index=False)[['cur', 'prv', 'l4w']].sum()
-
-    if target_df is not None and not target_df.empty:
-        keys_to_merge = [k for k in group_cols if k in target_df.columns]
-        if keys_to_merge:
-            t_df_temp = target_df.copy()
-            for k in keys_to_merge:
-                t_df_temp[k] = t_df_temp[k].fillna("Unattributed").astype(str).str.strip().str.title()
-            
-            t_agg = t_df_temp.groupby(keys_to_merge)['target'].sum().reset_index()
-            
-            if not res.empty: res = pd.merge(res, t_agg, on=keys_to_merge, how="outer")
-            else:
-                res = t_agg
-                res["cur"], res["prv"], res["l4w"] = 0, 0, 0
-        else: res["target"] = 0
-    else:
-        if res.empty: res = pd.DataFrame(columns=group_cols + ["cur", "prv", "l4w", "target"])
-        else: res["target"] = 0
-            
-    for col in ["cur", "prv", "l4w", "target"]:
-        if col not in res.columns: res[col] = 0
-        res[col] = res[col].fillna(0).astype(int)
-        
-    res["delta"] = res["cur"] - res["prv"]
-    res["pct"] = np.where(res["prv"] > 0, (res["delta"] / res["prv"]) * 100, np.nan)
-    res["proj"] = (res["cur"] + (res["l4w"] / 28.0) * remaining_days).round().astype(int)
-    res["gap"] = res["proj"] - res["target"]
-    res["gap_pct"] = np.where(res["target"] > 0, (res["gap"] / res["target"]) * 100, np.nan)
-    
-    res["contr"] = 0.0
-    sum_pos = res.loc[res['delta'] > 0, 'delta'].sum()
-    sum_neg = res.loc[res['delta'] < 0, 'delta'].sum()
-    
-    if sum_pos > 0: res["contr"] = np.where(res['delta'] > 0, (res['delta'] / sum_pos) * 100, res["contr"])
-    if sum_neg < 0: res["contr"] = np.where(res['delta'] < 0, -(res['delta'] / sum_neg) * 100, res["contr"])
-    
-    return res
 
 def draw_sortable_header(table_id, col_specs):
     state_key = f"sort_state_{table_id}"
@@ -948,18 +950,12 @@ with tab2:
     st.markdown('<div class="sec-ttl">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
 
     def style_tc_dataframe(dataframe, group_col):
-        unique_groups = dataframe[group_col].unique()
         def highlight_rows(row):
             if row["Week Start"] == "-": 
                 return ["background-color: #21263a; font-weight: 800; border-top: 2px solid rgba(255,255,255,0.3)"] * len(row)
             elif row["Week Start"] == "SUBTOTAL":
                 return ["background-color: rgba(255,255,255,0.08); font-weight: 700; border-top: 1px solid rgba(255,255,255,0.2); border-bottom: 1px solid rgba(255,255,255,0.2)"] * len(row)
-            try:
-                idx = list(unique_groups).index(row[group_col])
-                bg = "background-color: rgba(255,255,255,0.03)" if idx % 2 == 0 else "background-color: transparent"
-                return [bg] * len(row)
-            except:
-                return [""] * len(row)
+            return [""] * len(row)
                 
         def format_net_adds(val):
             if isinstance(val, (int, float)):
@@ -967,8 +963,7 @@ with tab2:
                 elif val < 0: return 'color: #ff6b6b; font-weight: 700;'
             return ''
             
-        format_dict = {c: "{:,.0f}" for c in dataframe.columns if c not in [group_col, "Week Start"]}
-        return dataframe.style.format(format_dict).apply(highlight_rows, axis=1).map(format_net_adds, subset=["Net New Additions"])
+        return dataframe.style.apply(highlight_rows, axis=1).map(format_net_adds, subset=["Net New Additions"])
 
     def get_standard_table(dataframe, group_col):
         if dataframe.empty or group_col not in dataframe.columns or "Week_start" not in dataframe.columns: 
@@ -1027,7 +1022,6 @@ with tab2:
         cols_order = [group_col, "Week Start", "Active TCs", "Existing TCs", "Resurrected TCs", "Churned TCs", "New TCs", "Targets", "Net New Additions"]
         return res_df[[c for c in cols_order if c in res_df.columns]]
 
-    # ── Using st.dataframe restores the Streamlit Canvas (and its toolbar) ──
     with st.expander("📊 Channel View Drill-down"):
         df_channel = get_standard_table(df_tc, "Channel")
         if not df_channel.empty:
