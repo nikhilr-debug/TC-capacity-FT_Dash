@@ -922,18 +922,28 @@ with tab1:
     if not vl_by_client_mat.empty:
         section("Dynamic Vendor Line (VL) Analytics Tracker (By Client)")
         
-        v_left, v_mid, v_right = st.columns([2, 3, 5])
-        tracker_sort = v_left.selectbox("Sort Priority By", ["Cur Volume", "Δ Vol (Delta)", "Gap vs Target", "Vendor Line (VL)"], index=1)
-        tracker_asc = v_mid.radio("Trend View", ["Descending", "Ascending"], horizontal=True, key="vl_ord") == "Ascending"
+        v_col1, v_col2, v_col3, v_col4 = st.columns([1, 1, 1, 2])
+        ft_n_vls = v_col1.number_input("Display Top N (FT)", min_value=1, max_value=100, value=15, key="ft_top_n_vls")
+        tracker_sort = v_col2.selectbox("Sort Priority By", ["Cur Volume", "Δ Vol (Delta)", "Gap vs Target", "Vendor Line (VL)"], index=1, key="ft_vl_sort")
+        tracker_trend = v_col3.radio("Trend View", ["Top Performers", "Bottom Performers"], horizontal=True, key="ft_vl_trend")
+        tracker_asc = True if "Bottom" in tracker_trend else False
+        
+        ft_client_opts = sorted(vl_by_client_mat["company_name"].dropna().unique()) if "company_name" in vl_by_client_mat.columns else []
+        ft_clients_flt = v_col4.multiselect("Filter by Client Profile", ft_client_opts, key="ft_vl_client_flt")
         
         vl_map = {"Cur Volume": "cur", "Δ Vol (Delta)": "delta", "Gap vs Target": "gap", "Vendor Line (VL)": "vl_name"}
-        vl_by_client_mat = vl_by_client_mat.sort_values(vl_map[tracker_sort], ascending=tracker_asc).head(50) # Auto top 50
+        
+        tmp_vl_mat = vl_by_client_mat.copy()
+        if ft_clients_flt and "company_name" in tmp_vl_mat.columns:
+            tmp_vl_mat = tmp_vl_mat[tmp_vl_mat["company_name"].isin(ft_clients_flt)]
+            
+        vl_by_client_mat_disp = tmp_vl_mat.sort_values(vl_map[tracker_sort], ascending=tracker_asc).head(ft_n_vls)
         
         t_html = '<div class="table-container"><table class="dash-table"><thead><tr>'
         t_html += '<th style="width:16%;">Vendor Line (VL)</th><th style="width:14%;">Client</th><th class="n" style="width:10%;">Cur</th><th class="n" style="width:10%;">Proj</th><th class="n" style="width:10%;">Prv</th><th class="n" style="width:10%;">Target</th><th class="n" style="width:10%;">Gap</th><th class="n" style="width:10%;">Δ Vol</th><th class="n" style="width:10%;">Contribution</th>'
         t_html += '</tr></thead><tbody>'
         
-        for _, r in vl_by_client_mat.iterrows():
+        for _, r in vl_by_client_mat_disp.iterrows():
             c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
             g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
             t_html += f"""<tr>
