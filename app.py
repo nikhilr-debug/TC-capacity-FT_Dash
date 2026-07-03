@@ -372,6 +372,7 @@ def fetch_targets_wtd(target_type, week_num):
         
     return pd.DataFrame(compiled_targets)
 
+# ── JSON Mapping for Channel classification Override ──────────────────────────
 CHANNEL_MAP = {
   "Existing VL - VGP Approved": [
     "Delhive", "4M Enterprises", "Allz Infra", "Viraj Patil", "Logix Manpower Service", 
@@ -417,24 +418,49 @@ df_tc_targets = fetch_tc_targets()
 
 if df_ft_raw.empty and df_tc_raw.empty: st.stop()
 
-# FT Pre-Processing
+# ── Dynamic Column Normalizer (Prevents Casing KeyErrors) ─────────────────────
+if not df_ft_raw.empty:
+    ft_col_map = {}
+    for c in df_ft_raw.columns:
+        cl = str(c).strip().lower().replace(" ", "_")
+        if cl in ["first_date_of_work", "company_name", "vl_name", "region"]: ft_col_map[c] = cl
+        elif cl == "client": ft_col_map[c] = "company_name"
+    df_ft_raw.rename(columns=ft_col_map, inplace=True)
+
+if not df_tc_raw.empty:
+    tc_col_map = {}
+    for c in df_tc_raw.columns:
+        cl = str(c).strip().lower().replace(" ", "_")
+        # Map exactly to what the SQL provides
+        if cl == "week_start": tc_col_map[c] = "Week_start"
+        elif cl == "vl_name": tc_col_map[c] = "vl_name"
+        elif cl == "region": tc_col_map[c] = "region"
+        elif cl == "cohort": tc_col_map[c] = "cohort"
+        elif cl == "channel": tc_col_map[c] = "Channel"
+        elif cl == "active_tcs": tc_col_map[c] = "active_tcs"
+        elif cl == "existing_tcs": tc_col_map[c] = "existing_tcs"
+        elif cl == "new_tcs": tc_col_map[c] = "new_tcs"
+        elif cl == "resurrected_tcs": tc_col_map[c] = "resurrected_tcs"
+        elif cl == "churned_tcs": tc_col_map[c] = "churned_tcs"
+        elif cl == "net_new_additions": tc_col_map[c] = "net_new_additions"
+    df_tc_raw.rename(columns=tc_col_map, inplace=True)
+
+# ── Post-Load Pre-Processing ──────────────────────────────────────────────────
 df_base = df_ft_raw.copy()
 ft = "first_date_of_work"
 if ft in df_base.columns:
     df_base[ft] = pd.to_datetime(df_base[ft], errors="coerce").dt.date
 
-# TC Pre-Processing (Protect against missing SQL columns)
-tc_metrics = ["active_tcs", "churned_tcs", "new_tcs", "resurrected_tcs"]
+tc_metrics = ["active_tcs", "existing_tcs", "churned_tcs", "new_tcs", "resurrected_tcs", "net_new_additions"]
 for col in tc_metrics:
-    if col not in df_tc_raw.columns:
-        df_tc_raw[col] = 0
-    else:
-        df_tc_raw[col] = pd.to_numeric(df_tc_raw[col], errors='coerce').fillna(0)
+    if col not in df_tc_raw.columns: df_tc_raw[col] = 0
+    else: df_tc_raw[col] = pd.to_numeric(df_tc_raw[col], errors='coerce').fillna(0)
 
 if "Week_start" in df_tc_raw.columns:
     df_tc_raw["Week_start"] = pd.to_datetime(df_tc_raw["Week_start"], errors='coerce').dt.date
 
-df_tc_raw["Channel"] = df_tc_raw.apply(lambda row: classify_channel(row.get("vl_name"), row.get("vl_status", "")), axis=1)
+if "vl_name" in df_tc_raw.columns:
+    df_tc_raw["Channel"] = df_tc_raw.apply(lambda row: classify_channel(row.get("vl_name"), row.get("vl_status", "")), axis=1)
 
 # ── Global Scope Temporal Anchoring ───────────────────────────────────────────
 today = datetime.date.today()
@@ -892,13 +918,13 @@ with tab2:
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     
-    # Calculate robust KPI logic ensuring math aligns perfectly
+    # KPIs read directly from live SQL columns
     kpi_new = cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0
     kpi_resurrected = cur_wk_data["resurrected_tcs"].sum() if not cur_wk_data.empty else 0
     kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
     kpi_active = cur_wk_data["active_tcs"].sum() if not cur_wk_data.empty else 0
-    kpi_existing = kpi_active - kpi_new - kpi_resurrected
-    kpi_net_additions = kpi_new + kpi_resurrected - kpi_churned
+    kpi_existing = cur_wk_data["existing_tcs"].sum() if not cur_wk_data.empty else 0
+    kpi_net_additions = cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0
 
     metrics = [
         ("Overall Target", overall_target), 
@@ -923,7 +949,7 @@ with tab2:
             if row["Week Start"] == "-": 
                 return ["background-color: #21263a; font-weight: 800; border-top: 2px solid rgba(255,255,255,0.3)"] * len(row)
             elif row["Week Start"] == "SUBTOTAL":
-                return ["background-color: rgba(255,255,255,0.08); font-weight: 700; border-top: 1px dashed rgba(255,255,255,0.2)"] * len(row)
+                return ["background-color: rgba(255,255,255,0.08); font-weight: 700; border-top: 1px solid rgba(255,255,255,0.2); border-bottom: 1px solid rgba(255,255,255,0.2)"] * len(row)
             try:
                 idx = list(unique_groups).index(row[group_col])
                 bg = "background-color: rgba(255,255,255,0.03)" if idx % 2 == 0 else "background-color: transparent"
@@ -940,11 +966,11 @@ with tab2:
         return dataframe.style.apply(highlight_rows, axis=1).map(format_net_adds, subset=["Sum of Net New Additions"])
 
     def get_standard_table(group_col):
-        if df_tc.empty or group_col not in df_tc.columns: return pd.DataFrame()
+        if df_tc.empty or group_col not in df_tc.columns or "Week_start" not in df_tc.columns: 
+            return pd.DataFrame()
         
-        agg = df_tc.groupby([group_col, "Week_start"])[["active_tcs", "churned_tcs", "new_tcs", "resurrected_tcs"]].sum().reset_index()
-        agg["net_new_additions"] = agg["new_tcs"] + agg["resurrected_tcs"] - agg["churned_tcs"]
-        agg["existing_tcs"] = agg["active_tcs"] - agg["new_tcs"] - agg["resurrected_tcs"]
+        # Pure aggregation of the raw SQL metrics. No manual + / - overrides.
+        agg = df_tc.groupby([group_col, "Week_start"])[["new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]].sum().reset_index()
         
         agg = agg.sort_values(by=[group_col, "Week_start"], ascending=[True, False])
         agg["Week_start"] = pd.to_datetime(agg["Week_start"]).dt.strftime('%d/%m/%Y')
@@ -994,23 +1020,20 @@ with tab2:
         tc_n_vls = col1.number_input("Display Top N (TC)", min_value=1, max_value=50, value=10)
         tc_sort_col = col2.selectbox("Sort Priority By", ["net_new_additions", "active_tcs", "new_tcs", "churned_tcs", "existing_tcs"], index=0)
         tc_trend = col3.radio("Trend View (TC)", ["Top Performers", "Bottom Performers"], horizontal=True)
-        tc_channels = col4.multiselect("Filter by Channel (TC Specific)", sorted(df_tc["Channel"].dropna().unique()), key="tc_exp_chan")
+        
+        tc_channel_opts = sorted(df_tc["Channel"].dropna().unique()) if "Channel" in df_tc.columns else []
+        tc_channels = col4.multiselect("Filter by Channel (TC Specific)", tc_channel_opts, key="tc_exp_chan")
         
         tmp_tc = df_tc.copy()
-        if tc_channels:
+        if tc_channels and "Channel" in tmp_tc.columns:
             tmp_tc = tmp_tc[tmp_tc["Channel"].isin(tc_channels)]
             
-        if not tmp_tc.empty:
-            tmp_tc["net_new_additions"] = tmp_tc["new_tcs"] + tmp_tc["resurrected_tcs"] - tmp_tc["churned_tcs"]
-            tmp_tc["existing_tcs"] = tmp_tc["active_tcs"] - tmp_tc["new_tcs"] - tmp_tc["resurrected_tcs"]
-            
+        if not tmp_tc.empty and "Week_start" in tmp_tc.columns:
             is_tc_asc = True if "Bottom" in tc_trend else False
             vl_totals = tmp_tc.groupby("vl_name")[tc_sort_col].sum().reset_index()
             top_vls = vl_totals.sort_values(by=tc_sort_col, ascending=is_tc_asc).head(tc_n_vls)["vl_name"].tolist()
             
-            vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "Week_start"])[["active_tcs", "churned_tcs", "new_tcs", "resurrected_tcs"]].sum().reset_index()
-            vl_agg["net_new_additions"] = vl_agg["new_tcs"] + vl_agg["resurrected_tcs"] - vl_agg["churned_tcs"]
-            vl_agg["existing_tcs"] = vl_agg["active_tcs"] - vl_agg["new_tcs"] - vl_agg["resurrected_tcs"]
+            vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "Week_start"])[["new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]].sum().reset_index()
             
             vl_agg["vl_name"] = pd.Categorical(vl_agg["vl_name"], categories=top_vls, ordered=True)
             vl_agg_filtered = vl_agg.sort_values(by=["vl_name", "Week_start"], ascending=[True, False])
