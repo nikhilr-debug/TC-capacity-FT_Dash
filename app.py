@@ -3,7 +3,6 @@ import pandas as pd
 import requests
 import datetime
 import numpy as np
-import random
 import plotly.graph_objects as go
 
 # ── Page config ────────────────────────────────────────────────────────────────
@@ -248,18 +247,30 @@ PLOT_LAYOUT = dict(
 BAR_CUR  = "#2f7dd4"
 BAR_PRV  = "#4a4f6a"
 
-# ── Data Fetch Pipelines ──────────────────────────────────────────────────────
-API_URL = "https://redash.vahan.link/api/queries/17613/results.json?api_key=4aFm2iOoyx8I91svQccdeZr0jmaiUsMFSRinZcmu"
+# ── Strictly Isolated Data Fetch Pipelines ────────────────────────────────────
+API_KEY = "4aFm2iOoyx8I91svQccdeZr0jmaiUsMFSRinZcmu"
+FT_API_URL = f"https://redash.vahan.link/api/queries/17613/results.json?api_key={API_KEY}"
+TC_API_URL = f"https://redash.vahan.link/api/queries/17597/results.json?api_key={API_KEY}"
 TARGETS_URL = "https://docs.google.com/spreadsheets/d/1S9XGqCiSHXjXbIrjJ6uoaDBRlTgQel__uaoc8S7zsa0/export?format=csv&gid=0"
 
 @st.cache_data(ttl=3600)
-def fetch_data():
+def fetch_ft_data():
     try:
-        r = requests.get(API_URL, timeout=30)
+        r = requests.get(FT_API_URL, timeout=30)
         r.raise_for_status()
         return pd.DataFrame(r.json()["query_result"]["data"]["rows"])
     except Exception as e:
-        st.error(f"⚠️ API pipeline disconnection: {e}")
+        st.error(f"⚠️ FT Data Pipeline Error: {e}")
+        return pd.DataFrame()
+
+@st.cache_data(ttl=3600)
+def fetch_tc_data():
+    try:
+        r = requests.get(TC_API_URL, timeout=30)
+        r.raise_for_status()
+        return pd.DataFrame(r.json()["query_result"]["data"]["rows"])
+    except Exception as e:
+        st.error(f"⚠️ TC Capacity Pipeline Error: {e}")
         return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
@@ -299,7 +310,6 @@ def fetch_targets_mtd():
 
 def fetch_targets_wtd(target_type, week_num):
     week_keys = [25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
-    
     overall_dict = {
         'Blinkit': [3537, 3760, 3760, 3760, 3960, 4177, 4277, 4427, 4577, 4829, 4929, 4979, 4979, 4979, 4979],
         'Swiggy Food': [887, 1243, 1314, 1428, 1685, 1929, 2171, 2418, 2763, 3019, 3269, 3574, 3876, 4223, 4488],
@@ -316,7 +326,6 @@ def fetch_targets_wtd(target_type, week_num):
         'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
         'Small Clients': [0, 0, 0, 20, 50, 100, 150, 200, 300, 400, 500, 550, 600, 600, 600]
     }
-    
     vl_dict = {
         'Blinkit': [0, 3537, 3760, 3760, 3760, 3960, 4177, 4277, 4427, 4577, 4829, 4929, 4979, 4979, 4979],
         'Swiggy Food': [0, 959, 1030, 1123, 1245, 1358, 1453, 1546, 1672, 1778, 1877, 1999, 2119, 2204, 2286],
@@ -333,7 +342,6 @@ def fetch_targets_wtd(target_type, week_num):
         'Maid': [0, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
         'Small Clients': [0, 0, 0, 20, 50, 100, 150, 200, 300, 400, 500, 550, 600, 600, 600]
     }
-    
     dc_dict = {
         'Blinkit': [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         'Swiggy Food': [0, 284, 284, 305, 440, 571, 718, 872, 1091, 1241, 1392, 1575, 1757, 2019, 2202],
@@ -356,7 +364,7 @@ def fetch_targets_wtd(target_type, week_num):
     else: active_dict = overall_dict
 
     if week_num in week_keys: w_idx = week_keys.index(week_num)
-    else: w_idx = 1 # W27 Default
+    else: w_idx = 1
         
     compiled_targets = []
     for client, weekly_targets in active_dict.items():
@@ -386,9 +394,10 @@ CHANNEL_MAP = {
 
 def classify_channel(vl_name, vl_status):
     if pd.notna(vl_status) and "new" in str(vl_status).lower():
-        return "New VL"
+        return "New"
     for channel, names in CHANNEL_MAP.items():
         if vl_name in names:
+            if "Existing VL" in channel: return "Existing VL"
             return channel
     return "Existing VL"
 
@@ -401,52 +410,30 @@ def fetch_tc_targets():
         "Overall Addition": [115, 53, 92, 213, 55, 246, 46, 44, 338, 20, 33]
     })
 
-# MOCK DATA FOR TC (In production, replace with real API call)
-@st.cache_data
-def fetch_mock_tc_data():
-    today_dt = datetime.date.today()
-    yesterday_dt = today_dt - datetime.timedelta(days=1)
-    dates = [yesterday_dt - datetime.timedelta(weeks=i) for i in range(12)]
-    data = []
-    for d in dates:
-        week_start = d - datetime.timedelta(days=d.weekday())
-        for _ in range(50):
-            # Included 'Unmapped Vendor' to trigger "Existing VL" fallback correctly
-            vl = random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A", "Fastseek", "Unmapped Vendor"])
-            stat = "New" if vl == "New Vendor A" else "Active"
-            
-            active = random.randint(10, 100)
-            new_tc = random.randint(0, 20)
-            resurrected = random.randint(0, 5)
-            churned = random.randint(0, 15)
-            
-            data.append({
-                "Week_start": week_start,
-                "vl_name": vl,
-                "vl_status": stat,
-                "company_name": random.choice(["Blinkit", "Swiggy Food", "Uber", "Amazon"]),
-                "region": random.choice(["NCR-UP", "South", "West", "East"]),
-                "cohort": random.choice(["Cohort#1", "Cohort#2", "Cohort#3"]),
-                "active_tcs": active,
-                "churned_tcs": churned,
-                "new_tcs": new_tc,
-                "resurrected_tcs": resurrected,
-                "existing_tcs": active - new_tc - resurrected, 
-                "net_new_additions": new_tc - churned
-            })
-    return pd.DataFrame(data)
-
-raw = fetch_data()
-df_tc_raw = fetch_mock_tc_data()
+# ── Primary Data Load (Strictly Separated Pipelines) ──────────────────────────
+df_ft_raw = fetch_ft_data()
+df_tc_raw = fetch_tc_data()
 df_tc_targets = fetch_tc_targets()
 
-if raw.empty: st.stop()
+if df_ft_raw.empty and df_tc_raw.empty: st.stop()
 
-df_base = raw.copy()
+# FT Pre-Processing
+df_base = df_ft_raw.copy()
 ft = "first_date_of_work"
-df_base[ft] = pd.to_datetime(df_base[ft], errors="coerce").dt.date
+if ft in df_base.columns:
+    df_base[ft] = pd.to_datetime(df_base[ft], errors="coerce").dt.date
 
-# Override SQL Channel with explicitly defined rules
+# TC Pre-Processing (Protect against missing SQL columns)
+tc_metrics = ["active_tcs", "churned_tcs", "new_tcs", "resurrected_tcs"]
+for col in tc_metrics:
+    if col not in df_tc_raw.columns:
+        df_tc_raw[col] = 0
+    else:
+        df_tc_raw[col] = pd.to_numeric(df_tc_raw[col], errors='coerce').fillna(0)
+
+if "Week_start" in df_tc_raw.columns:
+    df_tc_raw["Week_start"] = pd.to_datetime(df_tc_raw["Week_start"], errors='coerce').dt.date
+
 df_tc_raw["Channel"] = df_tc_raw.apply(lambda row: classify_channel(row.get("vl_name"), row.get("vl_status", "")), axis=1)
 
 # ── Global Scope Temporal Anchoring ───────────────────────────────────────────
@@ -492,24 +479,29 @@ cs, ce, ps, pe = get_windows(mode, exclude_current)
 
 st.sidebar.markdown("### 🔍 Global Segment Filters")
 
-# FT Specific Filters
-client_opts = sorted(list(df_base["company_name"].dropna().unique()))
+client_opts = sorted(list(df_base["company_name"].dropna().unique())) if "company_name" in df_base.columns else []
 selected_clients = st.sidebar.multiselect("Client Scope (FT Only)", client_opts, key="global_filter_client")
 
-# TC Specific Filters
-all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True)
+all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
 if exclude_current and len(all_weeks) > 0: all_weeks = all_weeks[1:]
 sel_weeks = st.sidebar.multiselect("Week Scope (TC Only)", all_weeks, default=all_weeks[:tc_time_filter])
-sel_cohorts = st.sidebar.multiselect("Cohort Scope (TC Only)", sorted(df_tc_raw["cohort"].dropna().unique()))
-sel_channels = st.sidebar.multiselect("Channel Scope (TC Only)", sorted(df_tc_raw["Channel"].dropna().unique()))
 
-# Shared Filters
-shared_regions = sorted(set(df_base["region"].dropna()).union(df_tc_raw["region"].dropna()))
-shared_vls = sorted(set(df_base["vl_name"].dropna()).union(df_tc_raw["vl_name"].dropna()))
+cohort_opts = sorted(df_tc_raw["cohort"].dropna().unique()) if "cohort" in df_tc_raw.columns else []
+sel_cohorts = st.sidebar.multiselect("Cohort Scope (TC Only)", cohort_opts)
+
+channel_opts = sorted(df_tc_raw["Channel"].dropna().unique()) if "Channel" in df_tc_raw.columns else []
+sel_channels = st.sidebar.multiselect("Channel Scope (TC Only)", channel_opts)
+
+reg_ft = set(df_base["region"].dropna()) if "region" in df_base.columns else set()
+reg_tc = set(df_tc_raw["region"].dropna()) if "region" in df_tc_raw.columns else set()
+shared_regions = sorted(reg_ft.union(reg_tc))
 selected_regions = st.sidebar.multiselect("Region Scope (Shared)", shared_regions)
+
+vl_ft = set(df_base["vl_name"].dropna()) if "vl_name" in df_base.columns else set()
+vl_tc = set(df_tc_raw["vl_name"].dropna()) if "vl_name" in df_tc_raw.columns else set()
+shared_vls = sorted(vl_ft.union(vl_tc))
 selected_vls = st.sidebar.multiselect("Vendor Line Scope (Shared)", shared_vls)
 
-# Extract ISO Week number of `cs` date to map WTD Target columns correctly
 cs_week_num = cs.isocalendar()[1]
 
 if mode == "MTD":
@@ -517,16 +509,12 @@ if mode == "MTD":
 else:
     dc_vendors = ["DC", "Direct Channel", "Basu Business Solutions"]
     if selected_vls:
-        if all(v in dc_vendors for v in selected_vls):
-            tgt_base = fetch_targets_wtd("DC", cs_week_num)
-        elif all(v not in dc_vendors for v in selected_vls):
-            tgt_base = fetch_targets_wtd("VL", cs_week_num)
-        else:
-            tgt_base = fetch_targets_wtd("Overall", cs_week_num)
+        if all(v in dc_vendors for v in selected_vls): tgt_base = fetch_targets_wtd("DC", cs_week_num)
+        elif all(v not in dc_vendors for v in selected_vls): tgt_base = fetch_targets_wtd("VL", cs_week_num)
+        else: tgt_base = fetch_targets_wtd("Overall", cs_week_num)
     else:
         tgt_base = fetch_targets_wtd("Overall", cs_week_num)
 
-# Apply Filters to DataFrames
 df = df_base.copy()
 t_df = tgt_base.copy()
 df_tc = df_tc_raw.copy()
@@ -538,21 +526,20 @@ def filter_target_df(target_df, col_name, selected_items):
         return target_df[target_df[col_name].isin(selected_items_title)]
     return target_df
 
-if selected_clients: 
+if selected_clients and "company_name" in df.columns: 
     df = df[df["company_name"].isin(selected_clients)]
     t_df = filter_target_df(t_df, 'company_name', selected_clients)
 if selected_regions:
-    df = df[df["region"].isin(selected_regions)]
-    df_tc = df_tc[df_tc["region"].isin(selected_regions)]
+    if "region" in df.columns: df = df[df["region"].isin(selected_regions)]
+    if "region" in df_tc.columns: df_tc = df_tc[df_tc["region"].isin(selected_regions)]
 if selected_vls:     
-    df = df[df["vl_name"].isin(selected_vls)]
+    if "vl_name" in df.columns: df = df[df["vl_name"].isin(selected_vls)]
     t_df = filter_target_df(t_df, 'vl_name', selected_vls)
-    df_tc = df_tc[df_tc["vl_name"].isin(selected_vls)]
-if sel_weeks: df_tc = df_tc[df_tc["Week_start"].isin(sel_weeks)]
-if sel_cohorts: df_tc = df_tc[df_tc["cohort"].isin(sel_cohorts)]
-if sel_channels: df_tc = df_tc[df_tc["Channel"].isin(sel_channels)]
+    if "vl_name" in df_tc.columns: df_tc = df_tc[df_tc["vl_name"].isin(selected_vls)]
+if sel_weeks and "Week_start" in df_tc.columns: df_tc = df_tc[df_tc["Week_start"].isin(sel_weeks)]
+if sel_cohorts and "cohort" in df_tc.columns: df_tc = df_tc[df_tc["cohort"].isin(sel_cohorts)]
+if sel_channels and "Channel" in df_tc.columns: df_tc = df_tc[df_tc["Channel"].isin(sel_channels)]
 
-# Run-Rate Projection Multiplier Engine
 days_elapsed = (ce - cs).days + 1
 if mode == "WTD": total_days = 7
 else:
@@ -602,6 +589,7 @@ def kpi_html(label, value, sub="", pill_html=""):
     </div>"""
 
 def compute_comparison_matrix(dataframe, group_key, target_df=None):
+    if ft not in dataframe.columns: return pd.DataFrame()
     group_cols = group_key if isinstance(group_key, list) else [group_key]
     
     c = dataframe[(dataframe[ft] >= cs) & (dataframe[ft] <= ce)].groupby(group_cols).size().rename("cur")
@@ -609,7 +597,6 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
     l4w = dataframe[(dataframe[ft] >= l4w_s) & (dataframe[ft] <= l4w_e)].groupby(group_cols).size().rename("l4w")
     
     res = pd.concat([c, p, l4w], axis=1).reset_index()
-    
     if not res.empty:
         for k in group_cols:
             if k in res.columns:
@@ -625,24 +612,17 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
             
             t_agg = t_df_temp.groupby(keys_to_merge)['target'].sum().reset_index()
             
-            if not res.empty:
-                res = pd.merge(res, t_agg, on=keys_to_merge, how="outer")
+            if not res.empty: res = pd.merge(res, t_agg, on=keys_to_merge, how="outer")
             else:
                 res = t_agg
-                res["cur"] = 0
-                res["prv"] = 0
-                res["l4w"] = 0
-        else:
-            res["target"] = 0
+                res["cur"], res["prv"], res["l4w"] = 0, 0, 0
+        else: res["target"] = 0
     else:
-        if res.empty:
-            res = pd.DataFrame(columns=group_cols + ["cur", "prv", "l4w", "target"])
-        else:
-            res["target"] = 0
+        if res.empty: res = pd.DataFrame(columns=group_cols + ["cur", "prv", "l4w", "target"])
+        else: res["target"] = 0
             
     for col in ["cur", "prv", "l4w", "target"]:
-        if col not in res.columns:
-            res[col] = 0
+        if col not in res.columns: res[col] = 0
         res[col] = res[col].fillna(0).astype(int)
         
     res["delta"] = res["cur"] - res["prv"]
@@ -680,9 +660,9 @@ def section(title):
     st.markdown(f'<div class="sec-ttl">{title}<div class="sec-ttl-line"></div></div>', unsafe_allow_html=True)
 
 # ── Primary Metric Matrices Engine Calculations ──────────────────────────────
-cur_tot = len(df[(df[ft] >= cs) & (df[ft] <= ce)])
-prv_tot = len(df[(df[ft] >= ps) & (df[ft] <= pe)])
-l4w_tot = len(df[(df[ft] >= l4w_s) & (df[ft] <= l4w_e)])
+cur_tot = len(df[(df[ft] >= cs) & (df[ft] <= ce)]) if ft in df.columns else 0
+prv_tot = len(df[(df[ft] >= ps) & (df[ft] <= pe)]) if ft in df.columns else 0
+l4w_tot = len(df[(df[ft] >= l4w_s) & (df[ft] <= l4w_e)]) if ft in df.columns else 0
 
 dlt_tot = cur_tot - prv_tot
 pct_tot = (dlt_tot / prv_tot * 100) if prv_tot > 0 else np.nan
@@ -721,7 +701,7 @@ with tab1:
     with k5: 
         st.markdown(kpi_html("Target Gap (Proj)", f'<span style="color:{g_color}">{fmt(gap_tot)}</span>', pill_html=pill_markup(gap_tot_pct)), unsafe_allow_html=True)
 
-    if mode == "WTD":
+    if mode == "WTD" and ft in df.columns:
         df_trend = df.copy()
         df_trend['datetime'] = pd.to_datetime(df_trend[ft])
         df_trend['Week_Start'] = df_trend['datetime'].dt.to_period('W').dt.start_time.dt.date
@@ -781,7 +761,7 @@ with tab1:
             m_tbl += '</tbody></table></div>'
             st.markdown(m_tbl, unsafe_allow_html=True)
 
-    elif mode == "MTD":
+    elif mode == "MTD" and ft in df.columns:
         section("Month-To-Date (MTD) Day-by-Day Run-Rate Tracking")
         sub_cur = df[(df[ft] >= cs) & (df[ft] <= ce)]
         sub_prv = df[(df[ft] >= ps) & (df[ft] <= pe)]
@@ -802,91 +782,63 @@ with tab1:
         fig_mtd.update_layout(**mtd_layout)
         st.plotly_chart(fig_mtd, config={"displayModeBar": False}, key="mtd_day_runrate_chart")
 
-    section("All Clients Performance Analysis")
-    c_col, c_desc = draw_sortable_header("client_main_v15", [
-        ("Client Name", "company_name", 20), 
-        ("Cur", "cur", 10), ("Proj", "proj", 10), ("Prv", "prv", 10),
-        ("Target", "target", 10), ("Gap", "gap", 10), 
-        ("Δ Vol", "delta", 10), ("Δ %", "pct", 10), ("Contribution", "contr", 10)
-    ])
-    if c_col == "company_name" or c_col not in client_mat.columns: client_mat = client_mat.sort_index(ascending=not c_desc)
-    else: client_mat = client_mat.sort_values(c_col, ascending=not c_desc)
+    if not client_mat.empty:
+        section("All Clients Performance Analysis")
+        c_col, c_desc = draw_sortable_header("client_main_v15", [
+            ("Client Name", "company_name", 20), 
+            ("Cur", "cur", 10), ("Proj", "proj", 10), ("Prv", "prv", 10),
+            ("Target", "target", 10), ("Gap", "gap", 10), 
+            ("Δ Vol", "delta", 10), ("Δ %", "pct", 10), ("Contribution", "contr", 10)
+        ])
+        if c_col == "company_name" or c_col not in client_mat.columns: client_mat = client_mat.sort_index(ascending=not c_desc)
+        else: client_mat = client_mat.sort_values(c_col, ascending=not c_desc)
 
-    t_html = '<div class="tw"><table class="dash-table"><tbody>'
-    for _, r in client_mat.iterrows():
-        c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
-        g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
-        t_html += f"""<tr>
-            <td style="width:20%; font-weight:600;">{r['company_name']}</td>
-            <td class="n" style="width:10%; font-weight:600; color:{c_color};">{fmt(r['cur'])}</td>
-            <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
-            <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
-            <td class="n" style="width:10%; color:var(--muted);">{fmt(r['target'])}</td>
-            <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br>{pill_markup(r['gap_pct'])}</td>
-            <td class="n" style="width:10%;">{volume_pill(r['delta'])}</td>
-            <td class="n" style="width:10%;">{pill_markup(r['pct'])}</td>
-            <td class="n" style="width:10%;">{contr_markup(r['delta'], r['contr'])}</td>
-        </tr>"""
-    t_html += "</tbody></table></div>"
-    st.markdown(t_html, unsafe_allow_html=True)
+        t_html = '<div class="tw"><table class="dash-table"><tbody>'
+        for _, r in client_mat.iterrows():
+            c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
+            g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
+            t_html += f"""<tr>
+                <td style="width:20%; font-weight:600;">{r['company_name']}</td>
+                <td class="n" style="width:10%; font-weight:600; color:{c_color};">{fmt(r['cur'])}</td>
+                <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
+                <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
+                <td class="n" style="width:10%; color:var(--muted);">{fmt(r['target'])}</td>
+                <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br>{pill_markup(r['gap_pct'])}</td>
+                <td class="n" style="width:10%;">{volume_pill(r['delta'])}</td>
+                <td class="n" style="width:10%;">{pill_markup(r['pct'])}</td>
+                <td class="n" style="width:10%;">{contr_markup(r['delta'], r['contr'])}</td>
+            </tr>"""
+        t_html += "</tbody></table></div>"
+        st.markdown(t_html, unsafe_allow_html=True)
 
-    section("Dynamic Vendor Line (VL) Analytics Tracker (By Client)")
-    
-    # ── Dynamic Configurable UI for VL Tracker ──
-    v_left, v_mid, v_right = st.columns([1, 1, 2])
-    tracker_top_n = v_left.selectbox("Display Top N Configurable", [5, 10, 15, 20, 50], index=1)
-    tracker_sort = v_mid.selectbox("Sort Priority By", ["cur", "delta", "gap"], index=1)
-    tracker_trend = v_right.radio("Trend View", ["Top Growing / Performers", "Bottom Degrowing / Performers"], horizontal=True)
-    is_ascending = True if "Bottom" in tracker_trend else False
+    if not vl_by_client_mat.empty:
+        section("Dynamic Vendor Line (VL) Analytics Tracker (By Client)")
+        
+        v_left, v_mid, v_right = st.columns([1, 1, 2])
+        tracker_top_n = v_left.selectbox("Display Top N Configurable", [5, 10, 15, 20, 50], index=1)
+        tracker_sort = v_mid.selectbox("Sort Priority By", ["cur", "delta", "gap"], index=1)
+        tracker_trend = v_right.radio("Trend View", ["Top Growing / Performers", "Bottom Degrowing / Performers"], horizontal=True)
+        is_ascending = True if "Bottom" in tracker_trend else False
 
-    vbc_col, vbc_desc = draw_sortable_header("vl_by_client_table_v15", [
-        ("Vendor Line (VL)", "vl_name", 16), ("Client", "company_name", 14), 
-        ("Cur", "cur", 10), ("Proj", "proj", 10), ("Prv", "prv", 10),
-        ("Target", "target", 10), ("Gap", "gap", 10), 
-        ("Δ Vol", "delta", 10), ("Contribution", "contr", 10)
-    ])
-    
-    if vbc_col in ["vl_name", "company_name"] or vbc_col not in vl_by_client_mat.columns: 
-        vl_by_client_mat = vl_by_client_mat.sort_values(by=tracker_sort, ascending=is_ascending).head(tracker_top_n)
-    else: 
-        vl_by_client_mat = vl_by_client_mat.sort_values(vbc_col, ascending=not vbc_desc).head(tracker_top_n)
-    
-    t_html = '<div class="tw"><table class="dash-table"><tbody>'
-    for _, r in vl_by_client_mat.iterrows():
-        c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
-        g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
-        t_html += f"""<tr>
-            <td style="width:16%; font-weight:600;">{r['vl_name']}</td>
-            <td style="width:14%; color:var(--muted);">{r['company_name']}</td>
-            <td class="n" style="width:10%; font-weight:600; color:{c_color};">{fmt(r['cur'])}</td>
-            <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
-            <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
-            <td class="n" style="width:10%; color:var(--muted);">{fmt(r['target'])}</td>
-            <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br>{pill_markup(r['gap_pct'])}</td>
-            <td class="n" style="width:10%;">{volume_pill(r['delta'])}</td>
-            <td class="n" style="width:10%;">{contr_markup(r['delta'], r['contr'])}</td>
-        </tr>"""
-    t_html += "</tbody></table></div>"
-    st.markdown(t_html, unsafe_allow_html=True)
-    
-    with st.expander("📍 Expand for Regional Execution View"):
-        rc_col, rc_desc = draw_sortable_header("reg_client_table_v15", [
-            ("Region", "region", 15), ("Client Profile", "company_name", 15), 
+        vbc_col, vbc_desc = draw_sortable_header("vl_by_client_table_v15", [
+            ("Vendor Line (VL)", "vl_name", 16), ("Client", "company_name", 14), 
             ("Cur", "cur", 10), ("Proj", "proj", 10), ("Prv", "prv", 10),
             ("Target", "target", 10), ("Gap", "gap", 10), 
             ("Δ Vol", "delta", 10), ("Contribution", "contr", 10)
         ])
-        reg_client_mat = compute_comparison_matrix(df, ["region", "company_name"], t_df)
-        if rc_col in ["region", "company_name"] or rc_col not in reg_client_mat.columns: reg_client_mat = reg_client_mat.sort_index(ascending=not rc_desc)
-        else: reg_client_mat = reg_client_mat.sort_values(rc_col, ascending=not rc_desc)
+        
+        if vbc_col in ["vl_name", "company_name"] or vbc_col not in vl_by_client_mat.columns: 
+            vl_by_client_mat = vl_by_client_mat.sort_values(by=tracker_sort, ascending=is_ascending).head(tracker_top_n)
+        else: 
+            vl_by_client_mat = vl_by_client_mat.sort_values(vbc_col, ascending=not vbc_desc).head(tracker_top_n)
         
         t_html = '<div class="tw"><table class="dash-table"><tbody>'
-        for _, r in reg_client_mat.iterrows():
+        for _, r in vl_by_client_mat.iterrows():
             c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
             g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
             t_html += f"""<tr>
-                <td style="width:15%; font-weight:600;">{r['region']}</td>
-                <td style="width:15%; color:var(--muted);">{r['company_name']}</td>
+                <td style="width:16%; font-weight:600;">{r['vl_name']}</td>
+                <td style="width:14%; color:var(--muted);">{r['company_name']}</td>
                 <td class="n" style="width:10%; font-weight:600; color:{c_color};">{fmt(r['cur'])}</td>
                 <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
                 <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
@@ -897,6 +849,35 @@ with tab1:
             </tr>"""
         t_html += "</tbody></table></div>"
         st.markdown(t_html, unsafe_allow_html=True)
+        
+        with st.expander("📍 Expand for Regional Execution View"):
+            rc_col, rc_desc = draw_sortable_header("reg_client_table_v15", [
+                ("Region", "region", 15), ("Client Profile", "company_name", 15), 
+                ("Cur", "cur", 10), ("Proj", "proj", 10), ("Prv", "prv", 10),
+                ("Target", "target", 10), ("Gap", "gap", 10), 
+                ("Δ Vol", "delta", 10), ("Contribution", "contr", 10)
+            ])
+            reg_client_mat = compute_comparison_matrix(df, ["region", "company_name"], t_df)
+            if rc_col in ["region", "company_name"] or rc_col not in reg_client_mat.columns: reg_client_mat = reg_client_mat.sort_index(ascending=not rc_desc)
+            else: reg_client_mat = reg_client_mat.sort_values(rc_col, ascending=not rc_desc)
+            
+            t_html = '<div class="tw"><table class="dash-table"><tbody>'
+            for _, r in reg_client_mat.iterrows():
+                c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
+                g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
+                t_html += f"""<tr>
+                    <td style="width:15%; font-weight:600;">{r['region']}</td>
+                    <td style="width:15%; color:var(--muted);">{r['company_name']}</td>
+                    <td class="n" style="width:10%; font-weight:600; color:{c_color};">{fmt(r['cur'])}</td>
+                    <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
+                    <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
+                    <td class="n" style="width:10%; color:var(--muted);">{fmt(r['target'])}</td>
+                    <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br>{pill_markup(r['gap_pct'])}</td>
+                    <td class="n" style="width:10%;">{volume_pill(r['delta'])}</td>
+                    <td class="n" style="width:10%;">{contr_markup(r['delta'], r['contr'])}</td>
+                </tr>"""
+            t_html += "</tbody></table></div>"
+            st.markdown(t_html, unsafe_allow_html=True)
 
 
 # ==============================================================================
@@ -911,13 +892,21 @@ with tab2:
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     
+    # Calculate robust KPI logic ensuring math aligns perfectly
+    kpi_new = cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0
+    kpi_resurrected = cur_wk_data["resurrected_tcs"].sum() if not cur_wk_data.empty else 0
+    kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
+    kpi_active = cur_wk_data["active_tcs"].sum() if not cur_wk_data.empty else 0
+    kpi_existing = kpi_active - kpi_new - kpi_resurrected
+    kpi_net_additions = kpi_new + kpi_resurrected - kpi_churned
+
     metrics = [
         ("Overall Target", overall_target), 
-        ("Active TCs", cur_wk_data["active_tcs"].sum() if not cur_wk_data.empty else 0),
-        ("Existing TCs", cur_wk_data["existing_tcs"].sum() if not cur_wk_data.empty else 0), 
-        ("Churned TCs", cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0), 
-        ("New TCs", cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0),
-        ("Net Additions", cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0)
+        ("Active TCs", kpi_active),
+        ("Existing TCs", kpi_existing), 
+        ("Churned TCs", kpi_churned), 
+        ("New TCs", kpi_new),
+        ("Net Additions", kpi_net_additions)
     ]
     for col, (label, val) in zip([c1, c2, c3, c4, c5, c6], metrics):
         text_color = "var(--text)"
@@ -929,12 +918,18 @@ with tab2:
     st.markdown('<div class="sec-ttl">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
 
     def style_tc_dataframe(dataframe, group_col):
+        unique_groups = dataframe[group_col].unique()
         def highlight_rows(row):
-            if row["Week_start"] == "-": 
+            if row["Week Start"] == "-": 
                 return ["background-color: #21263a; font-weight: 800; border-top: 2px solid rgba(255,255,255,0.3)"] * len(row)
-            elif row["Week_start"] == "SUBTOTAL":
+            elif row["Week Start"] == "SUBTOTAL":
                 return ["background-color: rgba(255,255,255,0.08); font-weight: 700; border-top: 1px dashed rgba(255,255,255,0.2)"] * len(row)
-            return [""] * len(row)
+            try:
+                idx = list(unique_groups).index(row[group_col])
+                bg = "background-color: rgba(255,255,255,0.03)" if idx % 2 == 0 else "background-color: transparent"
+                return [bg] * len(row)
+            except:
+                return [""] * len(row)
                 
         def format_net_adds(val):
             if isinstance(val, (int, float)):
@@ -942,31 +937,50 @@ with tab2:
                 elif val < 0: return 'color: #ff6b6b; font-weight: 700;'
             return ''
             
-        return dataframe.style.apply(highlight_rows, axis=1).map(format_net_adds, subset=["net_new_additions"])
+        return dataframe.style.apply(highlight_rows, axis=1).map(format_net_adds, subset=["Sum of Net New Additions"])
 
     def get_standard_table(group_col):
-        # 1. Base Aggregation
-        agg = df_tc.groupby([group_col, "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
-        agg = agg.sort_values(by=[group_col, "Week_start"], ascending=[True, False])
-        agg["Week_start"] = agg["Week_start"].astype(str)
+        if df_tc.empty or group_col not in df_tc.columns: return pd.DataFrame()
         
-        # 2. Iteratively Inject Subtotals
+        agg = df_tc.groupby([group_col, "Week_start"])[["active_tcs", "churned_tcs", "new_tcs", "resurrected_tcs"]].sum().reset_index()
+        agg["net_new_additions"] = agg["new_tcs"] + agg["resurrected_tcs"] - agg["churned_tcs"]
+        agg["existing_tcs"] = agg["active_tcs"] - agg["new_tcs"] - agg["resurrected_tcs"]
+        
+        agg = agg.sort_values(by=[group_col, "Week_start"], ascending=[True, False])
+        agg["Week_start"] = pd.to_datetime(agg["Week_start"]).dt.strftime('%d/%m/%Y')
+        
         final_rows = []
         for group_name, group_df in agg.groupby(group_col, sort=False):
-            final_rows.append(group_df)
+            if group_df.empty: continue
+            
             subtotal = group_df.sum(numeric_only=True).to_frame().T
             subtotal[group_col] = group_name
             subtotal["Week_start"] = "SUBTOTAL"
-            final_rows.append(subtotal)
             
+            final_rows.append(subtotal)
+            final_rows.append(group_df)
+            
+        if not final_rows: return pd.DataFrame()
         res_df = pd.concat(final_rows, ignore_index=True)
         
-        # 3. Inject Grand Total
         grand_total = agg.sum(numeric_only=True).to_frame().T
         grand_total[group_col] = "GRAND TOTAL"
         grand_total["Week_start"] = "-"
+        res_df = pd.concat([res_df, grand_total], ignore_index=True)
         
-        return pd.concat([res_df, grand_total], ignore_index=True)
+        cols_order = [group_col, "Week_start", "new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]
+        res_df = res_df[[c for c in cols_order if c in res_df.columns]]
+        
+        rename_dict = {
+            "Week_start": "Week Start",
+            "new_tcs": "Sum of New TCs",
+            "net_new_additions": "Sum of Net New Additions",
+            "active_tcs": "Sum of Active TCs",
+            "existing_tcs": "Sum of Existing TCs",
+            "resurrected_tcs": "Sum of Resurrected TCs",
+            "churned_tcs": "Sum of Churned TCs"
+        }
+        return res_df.rename(columns=rename_dict)
 
     with st.expander("📊 Channel View Drill-down"):
         st.dataframe(style_tc_dataframe(get_standard_table("Channel"), "Channel"), width='stretch', hide_index=True)
@@ -986,34 +1000,46 @@ with tab2:
         if tc_channels:
             tmp_tc = tmp_tc[tmp_tc["Channel"].isin(tc_channels)]
             
-        is_tc_asc = True if "Bottom" in tc_trend else False
-        vl_totals = tmp_tc.groupby("vl_name")[tc_sort_col].sum().reset_index()
-        top_vls = vl_totals.sort_values(by=tc_sort_col, ascending=is_tc_asc).head(tc_n_vls)["vl_name"].tolist()
-        
-        vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "region", "Channel", "cohort", "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
-        
-        vl_agg["vl_name"] = pd.Categorical(vl_agg["vl_name"], categories=top_vls, ordered=True)
-        vl_agg_filtered = vl_agg.sort_values(by=["vl_name", "Week_start"], ascending=[True, False])
-        vl_agg_filtered["Week_start"] = vl_agg_filtered["Week_start"].astype(str)
-        
-        # Inject Subtotals per Top N VL
-        final_vl_rows = []
-        for vl_name, group_df in vl_agg_filtered.groupby("vl_name", sort=False):
-            if group_df.empty: continue
-            final_vl_rows.append(group_df)
-            subtotal = group_df.sum(numeric_only=True).to_frame().T
-            subtotal["vl_name"] = vl_name
-            subtotal["region"] = "-"
-            subtotal["Channel"] = "-"
-            subtotal["cohort"] = "-"
-            subtotal["Week_start"] = "SUBTOTAL"
-            final_vl_rows.append(subtotal)
+        if not tmp_tc.empty:
+            tmp_tc["net_new_additions"] = tmp_tc["new_tcs"] + tmp_tc["resurrected_tcs"] - tmp_tc["churned_tcs"]
+            tmp_tc["existing_tcs"] = tmp_tc["active_tcs"] - tmp_tc["new_tcs"] - tmp_tc["resurrected_tcs"]
             
-        if final_vl_rows:
-            vl_res_df = pd.concat(final_vl_rows, ignore_index=True)
-            st.dataframe(style_tc_dataframe(vl_res_df, "vl_name"), width='stretch', hide_index=True)
-        else:
-            st.info("No Vendor Lines match the selected filters.")
+            is_tc_asc = True if "Bottom" in tc_trend else False
+            vl_totals = tmp_tc.groupby("vl_name")[tc_sort_col].sum().reset_index()
+            top_vls = vl_totals.sort_values(by=tc_sort_col, ascending=is_tc_asc).head(tc_n_vls)["vl_name"].tolist()
+            
+            vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "Week_start"])[["active_tcs", "churned_tcs", "new_tcs", "resurrected_tcs"]].sum().reset_index()
+            vl_agg["net_new_additions"] = vl_agg["new_tcs"] + vl_agg["resurrected_tcs"] - vl_agg["churned_tcs"]
+            vl_agg["existing_tcs"] = vl_agg["active_tcs"] - vl_agg["new_tcs"] - vl_agg["resurrected_tcs"]
+            
+            vl_agg["vl_name"] = pd.Categorical(vl_agg["vl_name"], categories=top_vls, ordered=True)
+            vl_agg_filtered = vl_agg.sort_values(by=["vl_name", "Week_start"], ascending=[True, False])
+            vl_agg_filtered["Week_start"] = pd.to_datetime(vl_agg_filtered["Week_start"]).dt.strftime('%d/%m/%Y')
+            
+            final_vl_rows = []
+            for vl_name, group_df in vl_agg_filtered.groupby("vl_name", sort=False):
+                if group_df.empty: continue
+                subtotal = group_df.sum(numeric_only=True).to_frame().T
+                subtotal["vl_name"] = vl_name
+                subtotal["Week_start"] = "SUBTOTAL"
+                
+                final_vl_rows.append(subtotal)
+                final_vl_rows.append(group_df)
+                
+            if final_vl_rows:
+                vl_res_df = pd.concat(final_vl_rows, ignore_index=True)
+                cols_order = ["vl_name", "Week_start", "new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]
+                vl_res_df = vl_res_df[[c for c in cols_order if c in vl_res_df.columns]]
+                
+                rename_dict = {
+                    "Week_start": "Week Start", "new_tcs": "Sum of New TCs", "net_new_additions": "Sum of Net New Additions",
+                    "active_tcs": "Sum of Active TCs", "existing_tcs": "Sum of Existing TCs",
+                    "resurrected_tcs": "Sum of Resurrected TCs", "churned_tcs": "Sum of Churned TCs"
+                }
+                vl_res_df = vl_res_df.rename(columns=rename_dict)
+                st.dataframe(style_tc_dataframe(vl_res_df, "vl_name"), width='stretch', hide_index=True)
+            else:
+                st.info("No Vendor Lines match the selected filters.")
 
 # ==============================================================================
 # TAB 3: AI NARRATIVE & RCA
@@ -1022,9 +1048,12 @@ with tab3:
     section("Programmatic Executive Summary & Attribution (Placements Only)")
     
     pool = []
-    for _, r in client_mat.iterrows(): pool.append({"type": "Client Profile", "name": r['company_name'], "delta": r["delta"]})
-    for _, r in reg_mat.iterrows():    pool.append({"type": "Regional Cluster", "name": r['region'], "delta": r["delta"]})
-    for _, r in vl_master.iterrows():   pool.append({"type": "Vendor Line Partner (VL)", "name": r['vl_name'], "delta": r["delta"]})
+    if not client_mat.empty:
+        for _, r in client_mat.iterrows(): pool.append({"type": "Client Profile", "name": r['company_name'], "delta": r["delta"]})
+    if not reg_mat.empty:
+        for _, r in reg_mat.iterrows():    pool.append({"type": "Regional Cluster", "name": r['region'], "delta": r["delta"]})
+    if not vl_master.empty:
+        for _, r in vl_master.iterrows():   pool.append({"type": "Vendor Line Partner (VL)", "name": r['vl_name'], "delta": r["delta"]})
     
     m_df = pd.DataFrame(pool, columns=["type", "name", "delta"]).dropna()
     leaders = m_df[m_df["delta"] > 0].nlargest(3, "delta") if not m_df.empty else pd.DataFrame()
