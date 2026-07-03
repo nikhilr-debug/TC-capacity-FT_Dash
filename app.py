@@ -372,7 +372,6 @@ def fetch_targets_wtd(target_type, week_num):
         
     return pd.DataFrame(compiled_targets)
 
-# ── JSON Mapping for Channel classification Override ──────────────────────────
 CHANNEL_MAP = {
   "Existing VL - VGP Approved": [
     "Delhive", "4M Enterprises", "Allz Infra", "Viraj Patil", "Logix Manpower Service", 
@@ -431,7 +430,6 @@ if not df_tc_raw.empty:
     tc_col_map = {}
     for c in df_tc_raw.columns:
         cl = str(c).strip().lower().replace(" ", "_")
-        # Map exactly to what the SQL provides
         if cl == "week_start": tc_col_map[c] = "Week_start"
         elif cl == "vl_name": tc_col_map[c] = "vl_name"
         elif cl == "region": tc_col_map[c] = "region"
@@ -918,7 +916,6 @@ with tab2:
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     
-    # KPIs read directly from live SQL columns
     kpi_new = cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0
     kpi_resurrected = cur_wk_data["resurrected_tcs"].sum() if not cur_wk_data.empty else 0
     kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
@@ -963,13 +960,29 @@ with tab2:
                 elif val < 0: return 'color: #ff6b6b; font-weight: 700;'
             return ''
             
-        return dataframe.style.apply(highlight_rows, axis=1).map(format_net_adds, subset=["Sum of Net New Additions"])
+        # Ensure numbers render beautifully inside the static HTML blocks
+        format_dict = {c: "{:,.0f}" for c in dataframe.columns if c not in [group_col, "Week Start"]}
+        return dataframe.style.format(format_dict).apply(highlight_rows, axis=1).map(format_net_adds, subset=["Sum of Net New Additions"])
+
+    def render_tc_table(dataframe, group_col):
+        if dataframe is None or dataframe.empty:
+            st.info("No data meets the current filter criteria.")
+            return
+        
+        styled_df = style_tc_dataframe(dataframe, group_col)
+        
+        # We output this as raw HTML to completely disable table-level column sorting and lock the pivot structure
+        try:
+            html = styled_df.hide(axis="index").to_html(table_attributes='class="dash-table" style="width: 100%;"')
+        except AttributeError:
+            html = styled_df.hide_index().to_html(table_attributes='class="dash-table" style="width: 100%;"')
+            
+        st.markdown(f'<div class="tw" style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
 
     def get_standard_table(group_col):
         if df_tc.empty or group_col not in df_tc.columns or "Week_start" not in df_tc.columns: 
             return pd.DataFrame()
         
-        # Pure aggregation of the raw SQL metrics. No manual + / - overrides.
         agg = df_tc.groupby([group_col, "Week_start"])[["new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]].sum().reset_index()
         
         agg = agg.sort_values(by=[group_col, "Week_start"], ascending=[True, False])
@@ -1009,11 +1022,11 @@ with tab2:
         return res_df.rename(columns=rename_dict)
 
     with st.expander("📊 Channel View Drill-down"):
-        st.dataframe(style_tc_dataframe(get_standard_table("Channel"), "Channel"), width='stretch', hide_index=True)
+        render_tc_table(get_standard_table("Channel"), "Channel")
     with st.expander("📍 Region View Drill-down"):
-        st.dataframe(style_tc_dataframe(get_standard_table("region"), "region"), width='stretch', hide_index=True)
+        render_tc_table(get_standard_table("region"), "region")
     with st.expander("👥 Cohort View Drill-down"):
-        st.dataframe(style_tc_dataframe(get_standard_table("cohort"), "cohort"), width='stretch', hide_index=True)
+        render_tc_table(get_standard_table("cohort"), "cohort")
         
     with st.expander("🏆 Top N VLs Configurable View"):
         col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
@@ -1060,7 +1073,8 @@ with tab2:
                     "resurrected_tcs": "Sum of Resurrected TCs", "churned_tcs": "Sum of Churned TCs"
                 }
                 vl_res_df = vl_res_df.rename(columns=rename_dict)
-                st.dataframe(style_tc_dataframe(vl_res_df, "vl_name"), width='stretch', hide_index=True)
+                
+                render_tc_table(vl_res_df, "vl_name")
             else:
                 st.info("No Vendor Lines match the selected filters.")
 
