@@ -404,10 +404,16 @@ def classify_channel(vl_name, vl_status):
 @st.cache_data
 def fetch_tc_targets():
     return pd.DataFrame({
-        "Week number": [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37],
-        "Week_start": pd.to_datetime(["2026-06-29", "2026-07-06", "2026-07-13", "2026-07-20", "2026-07-27", 
-                                      "2026-08-03", "2026-08-10", "2026-08-17", "2026-08-24", "2026-08-31", "2026-09-07"]).date,
-        "Overall Addition": [115, 53, 92, 213, 55, 246, 46, 44, 338, 20, 33]
+        "Week number": [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40],
+        "Week_start": pd.to_datetime([
+            "2026-06-29", "2026-07-06", "2026-07-13", "2026-07-20", "2026-07-27", 
+            "2026-08-03", "2026-08-10", "2026-08-17", "2026-08-24", "2026-08-31", 
+            "2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28"
+        ]).date,
+        "Overall Addition": [115, 53, 92, 213, 55, 246, 46, 44, 338, 20, 33, 0, 0, 0],
+        "Existing VL": [35, 38, 52, 40, 30, 21, 26, 24, 18, 10, 0, 0, 0, 0],
+        "BPO": [80, 0, 0, 150, 0, 200, 0, 0, 300, 0, 0, 0, 0, 0],
+        "DC": [0, 15, 40, 23, 25, 25, 20, 20, 20, 10, 0, 0, 0, 0]
     })
 
 # ── Primary Data Load (Strictly Separated Pipelines) ──────────────────────────
@@ -904,6 +910,7 @@ with tab1:
             t_html += "</tbody></table></div>"
             st.markdown(t_html, unsafe_allow_html=True)
 
+
 # ==============================================================================
 # TAB 2: TC CAPACITY VIEW
 # ==============================================================================
@@ -963,28 +970,24 @@ with tab2:
         format_dict = {c: "{:,.0f}" for c in dataframe.columns if c not in [group_col, "Week Start"]}
         return dataframe.style.format(format_dict).apply(highlight_rows, axis=1).map(format_net_adds, subset=["Net New Additions"])
 
-    def render_tc_table(dataframe, group_col):
-        if dataframe is None or dataframe.empty:
-            st.info("No data meets the current filter criteria.")
-            return
-        
-        styled_df = style_tc_dataframe(dataframe, group_col)
-        try:
-            html = styled_df.hide(axis="index").to_html(table_attributes='class="dash-table" style="width: 100%;"')
-        except AttributeError:
-            html = styled_df.hide_index().to_html(table_attributes='class="dash-table" style="width: 100%;"')
-            
-        st.markdown(f'<div class="tw" style="overflow-x:auto;">{html}</div>', unsafe_allow_html=True)
-
-    def get_standard_table(group_col):
-        if df_tc.empty or group_col not in df_tc.columns or "Week_start" not in df_tc.columns: 
+    def get_standard_table(dataframe, group_col):
+        if dataframe.empty or group_col not in dataframe.columns or "Week_start" not in dataframe.columns: 
             return pd.DataFrame()
         
-        agg = df_tc.groupby([group_col, "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+        agg = dataframe.groupby([group_col, "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
         
-        tgt_map = df_tc_targets.set_index("Week_start")["Overall Addition"].to_dict()
-        agg["targets"] = agg["Week_start"].map(tgt_map).fillna(0).astype(int)
-        
+        if group_col == "Channel":
+            def get_target(row):
+                w = row["Week_start"]
+                c = row["Channel"]
+                tgt_row = df_tc_targets[df_tc_targets["Week_start"] == w]
+                if tgt_row.empty: return 0
+                if c in tgt_row.columns: return int(tgt_row[c].values[0])
+                return 0
+            agg["targets"] = agg.apply(get_target, axis=1)
+        else:
+            agg["targets"] = 0
+            
         agg = agg.sort_values(by=[group_col, "Week_start"], ascending=[True, False])
         
         final_rows = []
@@ -1022,15 +1025,23 @@ with tab2:
         res_df = res_df.rename(columns=rename_dict)
         
         cols_order = [group_col, "Week Start", "Active TCs", "Existing TCs", "Resurrected TCs", "Churned TCs", "New TCs", "Targets", "Net New Additions"]
-        res_df = res_df[[c for c in cols_order if c in res_df.columns]]
-        return res_df
+        return res_df[[c for c in cols_order if c in res_df.columns]]
 
+    # ── Using st.dataframe restores the Streamlit Canvas (and its toolbar) ──
     with st.expander("📊 Channel View Drill-down"):
-        render_tc_table(get_standard_table("Channel"), "Channel")
+        df_channel = get_standard_table(df_tc, "Channel")
+        if not df_channel.empty:
+            st.dataframe(style_tc_dataframe(df_channel, "Channel"), use_container_width=True, hide_index=True)
+            
     with st.expander("📍 Region View Drill-down"):
-        render_tc_table(get_standard_table("region"), "region")
+        df_region = get_standard_table(df_tc, "region")
+        if not df_region.empty:
+            st.dataframe(style_tc_dataframe(df_region, "region"), use_container_width=True, hide_index=True)
+            
     with st.expander("👥 Cohort View Drill-down"):
-        render_tc_table(get_standard_table("cohort"), "cohort")
+        df_cohort = get_standard_table(df_tc, "cohort")
+        if not df_cohort.empty:
+            st.dataframe(style_tc_dataframe(df_cohort, "cohort"), use_container_width=True, hide_index=True)
         
     with st.expander("🏆 Top N VLs Configurable View"):
         col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
@@ -1050,45 +1061,14 @@ with tab2:
             vl_totals = tmp_tc.groupby("vl_name")[tc_sort_col].sum().reset_index()
             top_vls = vl_totals.sort_values(by=tc_sort_col, ascending=is_tc_asc).head(tc_n_vls)["vl_name"].tolist()
             
-            vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+            tmp_tc["vl_name"] = pd.Categorical(tmp_tc["vl_name"], categories=top_vls, ordered=True)
+            tmp_tc = tmp_tc.dropna(subset=["vl_name"])
             
-            tgt_map = df_tc_targets.set_index("Week_start")["Overall Addition"].to_dict()
-            vl_agg["targets"] = vl_agg["Week_start"].map(tgt_map).fillna(0).astype(int)
-            
-            vl_agg["vl_name"] = pd.Categorical(vl_agg["vl_name"], categories=top_vls, ordered=True)
-            vl_agg_filtered = vl_agg.sort_values(by=["vl_name", "Week_start"], ascending=[True, False])
-            
-            final_vl_rows = []
-            for vl_name, group_df in vl_agg_filtered.groupby("vl_name", sort=False):
-                if group_df.empty: continue
-                subtotal = group_df.sum(numeric_only=True).to_frame().T
-                subtotal["vl_name"] = vl_name
-                subtotal["Week_start"] = "SUBTOTAL"
-                
-                gp_df = group_df.copy()
-                gp_df["Week_start"] = pd.to_datetime(gp_df["Week_start"]).dt.strftime('%d/%m/%Y')
-                
-                final_vl_rows.append(subtotal)
-                final_vl_rows.append(gp_df)
-                
-            if final_vl_rows:
-                vl_res_df = pd.concat(final_vl_rows, ignore_index=True)
-                rename_dict = {
-                    "Week_start": "Week Start",
-                    "active_tcs": "Active TCs",
-                    "existing_tcs": "Existing TCs",
-                    "resurrected_tcs": "Resurrected TCs",
-                    "churned_tcs": "Churned TCs",
-                    "new_tcs": "New TCs",
-                    "targets": "Targets",
-                    "net_new_additions": "Net New Additions"
-                }
-                vl_res_df = vl_res_df.rename(columns=rename_dict)
-                cols_order = ["vl_name", "Week Start", "Active TCs", "Existing TCs", "Resurrected TCs", "Churned TCs", "New TCs", "Targets", "Net New Additions"]
-                vl_res_df = vl_res_df[[c for c in cols_order if c in vl_res_df.columns]]
-                render_tc_table(vl_res_df, "vl_name")
-            else:
-                st.info("No Vendor Lines match the selected filters.")
+            df_vl = get_standard_table(tmp_tc, "vl_name")
+            if not df_vl.empty:
+                st.dataframe(style_tc_dataframe(df_vl, "vl_name"), use_container_width=True, hide_index=True)
+        else:
+            st.info("No Vendor Lines match the selected filters.")
 
 # ==============================================================================
 # TAB 3: AI NARRATIVE & RCA
