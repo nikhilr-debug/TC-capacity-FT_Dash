@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import json
+import random
 import plotly.graph_objects as go
 
 # ── Page Config & Premium UI System ───────────────────────────────────────────
@@ -69,7 +70,7 @@ html, body, [class*="css"], .stApp {
 st.markdown(CSS, unsafe_allow_html=True)
 
 # ── Global Scope & Logic Definitions ──────────────────────────────────────────
-today = datetime.date(2026, 7, 3) # Anchored to current logical time
+today = datetime.date.today()
 yesterday = today - datetime.timedelta(days=1)
 
 # Channel JSON Mapping
@@ -104,22 +105,22 @@ def classify_channel(vl_name, vl_status):
 # ── Data Fetch Pipelines (Mocked for runtime execution) ───────────────────────
 @st.cache_data
 def fetch_mock_ft_data():
-    # Mocks granular candidate SQL data
-    dates = pd.date_range(end=yesterday, periods=90)
+    # Pre-convert pandas DatetimeIndex to a list of standard Python date objects
+    dates = [d.date() for d in pd.date_range(end=yesterday, periods=90)]
+    
     data = []
     for _ in range(2000):
         data.append({
-            "first_date_of_work": np.random.choice(dates).date(),
+            "first_date_of_work": random.choice(dates),
             "company_name": np.random.choice(["Blinkit", "Swiggy Food", "Uber", "Amazon"]),
             "vl_name": np.random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A", "WorkSetu"]),
             "region": np.random.choice(["NCR-UP", "South", "West", "East"]),
-            "activation_date": np.random.choice(dates).date()
+            "activation_date": random.choice(dates)
         })
     return pd.DataFrame(data)
 
 @st.cache_data
 def fetch_mock_tc_data():
-    # Mocks TC capacity SQL
     dates = [yesterday - datetime.timedelta(weeks=i) for i in range(12)]
     data = []
     for d in dates:
@@ -127,7 +128,7 @@ def fetch_mock_tc_data():
             vl = np.random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A"])
             stat = "New" if vl == "New Vendor A" else "Active"
             data.append({
-                "Week_start": (d - datetime.timedelta(days=d.weekday())).date(),
+                "Week_start": (d - datetime.timedelta(days=d.weekday())),
                 "vl_name": vl,
                 "vl_status": stat,
                 "region": np.random.choice(["NCR-UP", "South", "West", "East"]),
@@ -145,7 +146,6 @@ def fetch_mock_tc_data():
 
 @st.cache_data
 def fetch_tc_targets():
-    # Exact Target mapping for TC capacity
     return pd.DataFrame({
         "Week number": [27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37],
         "Week_start": pd.to_datetime(["2026-06-29", "2026-07-06", "2026-07-13", "2026-07-20", "2026-07-27", 
@@ -200,7 +200,7 @@ with tab1:
     proj_ft = int(cur_ft + (trailing_avg_daily * remaining_days))
     
     # Target Sheet Rule
-    target_ft = 15000 if view_mode == "Monthly" else 0 # Mock Monthly Target
+    target_ft = 15000 if view_mode == "Monthly" else 0
     gap_ft = proj_ft - target_ft if view_mode == "Monthly" else 0
     gap_cls = "pos" if gap_ft >= 0 else "neg"
     target_display = f"{target_ft:,}" if view_mode == "Monthly" else "N/A (Weekly)"
@@ -226,7 +226,6 @@ with tab1:
     sort_prio = c_mid.selectbox("Sort Priority By", ["Volume", "Delta", "Gap"])
     trend_view = c_right.radio("Trend View", ["Top Growing/Performers", "Bottom Degrowing/Performers"], horizontal=True)
 
-    # Mock dynamic VL table
     df_vl = df_ft[df_ft["first_date_of_work"] >= cs].groupby(["vl_name", "company_name"]).size().reset_index(name='Volume')
     df_vl["Delta"] = np.random.randint(-50, 100, size=len(df_vl))
     df_vl["Gap"] = np.random.randint(-100, 50, size=len(df_vl))
@@ -236,7 +235,6 @@ with tab1:
     
     st.dataframe(df_vl.style.format({"Volume": "{:,}", "Delta": "{:,}", "Gap": "{:,}"}), use_container_width=True, hide_index=True)
 
-    # Nested Regional View
     with st.expander("📍 Expand for Regional Execution View"):
         df_reg = df_ft[df_ft["first_date_of_work"] >= cs].groupby("region").size().reset_index(name='Current FT')
         st.dataframe(df_reg, use_container_width=True, hide_index=True)
@@ -246,11 +244,9 @@ with tab1:
 # TAB 2: TC CAPACITY VIEW
 # ==============================================================================
 with tab2:
-    # Filter by N weeks
     recent_weeks = df_tc["Week_start"].drop_duplicates().nlargest(tc_time_filter).tolist()
     df_tc_filtered = df_tc[df_tc["Week_start"].isin(recent_weeks)]
     
-    # Current Week Snapshot (Assuming latest week is current)
     cur_wk_date = recent_weeks[0] if recent_weeks else None
     cur_wk_data = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date]
     
@@ -271,7 +267,6 @@ with tab2:
 
     def draw_standard_table(group_col):
         agg = df_tc_filtered.groupby(["Week_start", group_col])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
-        # Add totals row
         totals = agg.sum(numeric_only=True).to_frame().T
         totals["Week_start"] = "TOTAL"
         totals[group_col] = "-"
@@ -299,12 +294,10 @@ with tab2:
 with tab3:
     st.markdown('<div class="sec-ttl">Automated Programmatic Narrative</div>', unsafe_allow_html=True)
     
-    # Dummy variables for programmatic narrative (In prod, these evaluate from the live dataframes)
     top_channel_miss = "Existing VL - VGP Identified"
     top_region_miss = "NCR-UP"
     top_cohort_miss = "Cohort#2"
     
-    # Template Generation
     summary_text = f"""
     ### Executive Insights & Key Pointers
     
