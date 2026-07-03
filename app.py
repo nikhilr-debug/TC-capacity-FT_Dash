@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import datetime
-import json
 import random
 import plotly.graph_objects as go
 
@@ -105,16 +104,14 @@ def classify_channel(vl_name, vl_status):
 # ── Data Fetch Pipelines (Mocked for runtime execution) ───────────────────────
 @st.cache_data
 def fetch_mock_ft_data():
-    # Pre-convert pandas DatetimeIndex to a list of standard Python date objects
     dates = [d.date() for d in pd.date_range(end=yesterday, periods=90)]
-    
     data = []
     for _ in range(2000):
         data.append({
             "first_date_of_work": random.choice(dates),
-            "company_name": np.random.choice(["Blinkit", "Swiggy Food", "Uber", "Amazon"]),
-            "vl_name": np.random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A", "WorkSetu"]),
-            "region": np.random.choice(["NCR-UP", "South", "West", "East"]),
+            "company_name": random.choice(["Blinkit", "Swiggy Food", "Uber", "Amazon"]),
+            "vl_name": random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A", "WorkSetu"]),
+            "region": random.choice(["NCR-UP", "South", "West", "East"]),
             "activation_date": random.choice(dates)
         })
     return pd.DataFrame(data)
@@ -124,19 +121,20 @@ def fetch_mock_tc_data():
     dates = [yesterday - datetime.timedelta(weeks=i) for i in range(12)]
     data = []
     for d in dates:
+        week_start = d - datetime.timedelta(days=d.weekday())
         for _ in range(50):
-            vl = np.random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A"])
+            vl = random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A"])
             stat = "New" if vl == "New Vendor A" else "Active"
             data.append({
-                "Week_start": (d - datetime.timedelta(days=d.weekday())),
+                "Week_start": week_start,
                 "vl_name": vl,
                 "vl_status": stat,
-                "region": np.random.choice(["NCR-UP", "South", "West", "East"]),
-                "cohort": np.random.choice(["Cohort#1", "Cohort#2", "Cohort#3"]),
-                "active_tcs": np.random.randint(10, 100),
-                "churned_tcs": np.random.randint(0, 15),
-                "new_tcs": np.random.randint(0, 20),
-                "resurrected_tcs": np.random.randint(0, 5)
+                "region": random.choice(["NCR-UP", "South", "West", "East"]),
+                "cohort": random.choice(["Cohort#1", "Cohort#2", "Cohort#3"]),
+                "active_tcs": random.randint(10, 100),
+                "churned_tcs": random.randint(0, 15),
+                "new_tcs": random.randint(0, 20),
+                "resurrected_tcs": random.randint(0, 5)
             })
     df = pd.DataFrame(data)
     df["Channel"] = df.apply(lambda row: classify_channel(row["vl_name"], row["vl_status"]), axis=1)
@@ -157,12 +155,46 @@ df_ft = fetch_mock_ft_data()
 df_tc = fetch_mock_tc_data()
 df_tc_targets = fetch_tc_targets()
 
-# ── Sidebar Configurations ────────────────────────────────────────────────────
+# ── Sidebar Configurations & Segment Filters ──────────────────────────────────
 st.sidebar.markdown("### ⚙️ Executive Parameters")
-view_mode = st.sidebar.radio("Temporal View", ["Monthly", "Weekly"])
-tc_time_filter = st.sidebar.number_input("TC Capacity N-Weeks Filter", min_value=1, max_value=12, value=6)
+view_mode = st.sidebar.radio("FT Temporal View", ["Monthly", "Weekly"])
+tc_time_filter = st.sidebar.number_input("TC Capacity N-Weeks Default", min_value=1, max_value=12, value=6)
+exclude_current = st.sidebar.checkbox("Exclude Current Incomplete Week", value=False)
 
-# Time logic
+st.sidebar.markdown("### 🔍 Global Segment Filters")
+
+# FT Specific Filter
+sel_clients = st.sidebar.multiselect("Client Scope (FT Only)", sorted(df_ft["company_name"].unique()))
+
+# TC Specific Filter setup
+all_weeks = sorted(df_tc["Week_start"].dropna().unique(), reverse=True)
+if exclude_current and len(all_weeks) > 0:
+    all_weeks = all_weeks[1:] # Prune the active incomplete week
+sel_weeks = st.sidebar.multiselect("Week Scope (TC Only)", all_weeks, default=all_weeks[:tc_time_filter])
+sel_cohorts = st.sidebar.multiselect("Cohort Scope (TC Only)", sorted(df_tc["cohort"].unique()))
+sel_channels = st.sidebar.multiselect("Channel Scope (TC Only)", sorted(df_tc["Channel"].unique()))
+
+# Shared Filters across both views
+shared_regions = sorted(set(df_ft["region"]).union(df_tc["region"]))
+shared_vls = sorted(set(df_ft["vl_name"]).union(df_tc["vl_name"]))
+sel_regions = st.sidebar.multiselect("Region Scope (Shared)", shared_regions)
+sel_vls = st.sidebar.multiselect("Vendor Line Scope (Shared)", shared_vls)
+
+# Apply Filters to FT Data
+df_ft_filtered = df_ft.copy()
+if sel_clients: df_ft_filtered = df_ft_filtered[df_ft_filtered["company_name"].isin(sel_clients)]
+if sel_regions: df_ft_filtered = df_ft_filtered[df_ft_filtered["region"].isin(sel_regions)]
+if sel_vls: df_ft_filtered = df_ft_filtered[df_ft_filtered["vl_name"].isin(sel_vls)]
+
+# Apply Filters to TC Data
+df_tc_filtered = df_tc.copy()
+if sel_weeks: df_tc_filtered = df_tc_filtered[df_tc_filtered["Week_start"].isin(sel_weeks)]
+if sel_regions: df_tc_filtered = df_tc_filtered[df_tc_filtered["region"].isin(sel_regions)]
+if sel_vls: df_tc_filtered = df_tc_filtered[df_tc_filtered["vl_name"].isin(sel_vls)]
+if sel_cohorts: df_tc_filtered = df_tc_filtered[df_tc_filtered["cohort"].isin(sel_cohorts)]
+if sel_channels: df_tc_filtered = df_tc_filtered[df_tc_filtered["Channel"].isin(sel_channels)]
+
+# Temporal Anchoring for FT
 if view_mode == "Monthly":
     cs = today.replace(day=1)
     ce = yesterday
@@ -170,7 +202,9 @@ if view_mode == "Monthly":
     pe = cs - datetime.timedelta(days=1)
 else:
     cs = today - datetime.timedelta(days=today.weekday())
-    ce = yesterday
+    if exclude_current:
+        cs = cs - datetime.timedelta(weeks=1)
+    ce = cs + datetime.timedelta(days=6) if exclude_current else yesterday
     ps = cs - datetime.timedelta(weeks=1)
     pe = ce - datetime.timedelta(weeks=1)
 
@@ -178,10 +212,11 @@ days_elapsed = max(1, (ce - cs).days + 1)
 total_days = 7 if view_mode == "Weekly" else (datetime.date(today.year, today.month % 12 + 1, 1) - cs).days
 remaining_days = max(0, total_days - days_elapsed)
 
-# 8-Week Trailing Average Logic (Projected FT)
+# 8-Week Trailing Average Logic (Projected FT) on filtered data
 l8w_start = yesterday - datetime.timedelta(weeks=8)
-df_l8w = df_ft[(df_ft["first_date_of_work"] >= l8w_start) & (df_ft["first_date_of_work"] <= yesterday)]
+df_l8w = df_ft_filtered[(df_ft_filtered["first_date_of_work"] >= l8w_start) & (df_ft_filtered["first_date_of_work"] <= yesterday)]
 trailing_avg_daily = len(df_l8w) / 56 if not df_l8w.empty else 0
+
 
 # ── UI Header ─────────────────────────────────────────────────────────────────
 st.markdown("""
@@ -195,8 +230,8 @@ tab1, tab2, tab3 = st.tabs(["📊 FT View", "⚡ TC Capacity", "🧠 Executive S
 # TAB 1: FT VIEW (Placements)
 # ==============================================================================
 with tab1:
-    cur_ft = len(df_ft[(df_ft["first_date_of_work"] >= cs) & (df_ft["first_date_of_work"] <= ce)])
-    prv_ft = len(df_ft[(df_ft["first_date_of_work"] >= ps) & (df_ft["first_date_of_work"] <= pe)])
+    cur_ft = len(df_ft_filtered[(df_ft_filtered["first_date_of_work"] >= cs) & (df_ft_filtered["first_date_of_work"] <= ce)])
+    prv_ft = len(df_ft_filtered[(df_ft_filtered["first_date_of_work"] >= ps) & (df_ft_filtered["first_date_of_work"] <= pe)])
     proj_ft = int(cur_ft + (trailing_avg_daily * remaining_days))
     
     # Target Sheet Rule
@@ -220,45 +255,42 @@ with tab1:
 
     st.markdown('<div class="sec-ttl">Dynamic Vendor Line (VL) Analytics Tracker</div>', unsafe_allow_html=True)
     
-    # Tracker Controls
     c_left, c_mid, c_right = st.columns([1, 1, 2])
     top_n = c_left.selectbox("Display Top N", [5, 10, 15, 20], index=1)
     sort_prio = c_mid.selectbox("Sort Priority By", ["Volume", "Delta", "Gap"])
     trend_view = c_right.radio("Trend View", ["Top Growing/Performers", "Bottom Degrowing/Performers"], horizontal=True)
 
-    df_vl = df_ft[df_ft["first_date_of_work"] >= cs].groupby(["vl_name", "company_name"]).size().reset_index(name='Volume')
+    df_vl = df_ft_filtered[df_ft_filtered["first_date_of_work"] >= cs].groupby(["vl_name", "company_name"]).size().reset_index(name='Volume')
     df_vl["Delta"] = np.random.randint(-50, 100, size=len(df_vl))
     df_vl["Gap"] = np.random.randint(-100, 50, size=len(df_vl))
     
     ascending = True if "Bottom" in trend_view else False
     df_vl = df_vl.sort_values(by=sort_prio, ascending=ascending).head(top_n)
-    
     st.dataframe(df_vl.style.format({"Volume": "{:,}", "Delta": "{:,}", "Gap": "{:,}"}), use_container_width=True, hide_index=True)
 
     with st.expander("📍 Expand for Regional Execution View"):
-        df_reg = df_ft[df_ft["first_date_of_work"] >= cs].groupby("region").size().reset_index(name='Current FT')
+        df_reg = df_ft_filtered[df_ft_filtered["first_date_of_work"] >= cs].groupby("region").size().reset_index(name='Current FT')
         st.dataframe(df_reg, use_container_width=True, hide_index=True)
-
 
 # ==============================================================================
 # TAB 2: TC CAPACITY VIEW
 # ==============================================================================
 with tab2:
-    recent_weeks = df_tc["Week_start"].drop_duplicates().sort_values(ascending=False).head(tc_time_filter).tolist()    
-    df_tc_filtered = df_tc[df_tc["Week_start"].isin(recent_weeks)]
+    cur_wk_date = all_weeks[0] if all_weeks else None
+    cur_wk_data = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
     
-    cur_wk_date = recent_weeks[0] if recent_weeks else None
-    cur_wk_data = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date]
-    
-    target_row = df_tc_targets[df_tc_targets["Week_start"] == cur_wk_date]
+    target_row = df_tc_targets[df_tc_targets["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
     overall_target = target_row["Overall Addition"].values[0] if not target_row.empty else 0
 
     c1, c2, c3, c4, c5, c6, c7 = st.columns(7)
     metrics = [
-        ("Overall Target", overall_target), ("Active TCs", cur_wk_data["active_tcs"].sum()),
-        ("Existing TCs", cur_wk_data["existing_tcs"].sum()), ("Resurrected TCs", cur_wk_data["resurrected_tcs"].sum()),
-        ("Churned TCs", cur_wk_data["churned_tcs"].sum()), ("New TCs", cur_wk_data["new_tcs"].sum()),
-        ("Net Additions", cur_wk_data["net_new_additions"].sum())
+        ("Overall Target", overall_target), 
+        ("Active TCs", cur_wk_data["active_tcs"].sum() if not cur_wk_data.empty else 0),
+        ("Existing TCs", cur_wk_data["existing_tcs"].sum() if not cur_wk_data.empty else 0), 
+        ("Resurrected TCs", cur_wk_data["resurrected_tcs"].sum() if not cur_wk_data.empty else 0),
+        ("Churned TCs", cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0), 
+        ("New TCs", cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0),
+        ("Net Additions", cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0)
     ]
     for col, (label, val) in zip([c1, c2, c3, c4, c5, c6, c7], metrics):
         col.markdown(f'<div class="kpi" style="padding:10px;"><div class="kpi-lbl" style="font-size:9px;">{label}</div><div class="kpi-val" style="font-size:20px;">{val:,}</div></div>', unsafe_allow_html=True)
@@ -266,10 +298,15 @@ with tab2:
     st.markdown('<div class="sec-ttl">Detailed Analytical Modals</div>', unsafe_allow_html=True)
 
     def draw_standard_table(group_col):
-        agg = df_tc_filtered.groupby(["Week_start", group_col])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+        # Group by the primary dimension first, then by week
+        agg = df_tc_filtered.groupby([group_col, "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+        # Sort to visually cluster all weeks under their respective parent group
+        agg = agg.sort_values(by=[group_col, "Week_start"], ascending=[True, False])
+        
+        # Append Grand Totals
         totals = agg.sum(numeric_only=True).to_frame().T
-        totals["Week_start"] = "TOTAL"
-        totals[group_col] = "-"
+        totals[group_col] = "TOTAL"
+        totals["Week_start"] = "-"
         return pd.concat([agg, totals], ignore_index=True)
 
     with st.expander("📊 Channel View Drill-down"):
@@ -279,14 +316,18 @@ with tab2:
     with st.expander("👥 Cohort View Drill-down"):
         st.dataframe(draw_standard_table("cohort"), use_container_width=True, hide_index=True)
     with st.expander("🏆 Top N VLs Configurable View"):
-        col_n, col_chan = st.columns(2)
-        n_vls = col_n.number_input("Top N", min_value=1, max_value=50, value=10)
-        sel_channel = col_chan.multiselect("Filter by Channel", df_tc_filtered["Channel"].unique())
+        n_vls = st.number_input("Display Top N Vendor Lines", min_value=1, max_value=50, value=10)
         
-        tmp_vl = df_tc_filtered.copy()
-        if sel_channel: tmp_vl = tmp_vl[tmp_vl["Channel"].isin(sel_channel)]
-        vl_agg = tmp_vl.groupby(["vl_name", "region", "Channel", "cohort"])["net_new_additions"].sum().reset_index()
-        st.dataframe(vl_agg.nlargest(n_vls, "net_new_additions"), use_container_width=True, hide_index=True)
+        # Group VLs maintaining the clustered weekly history
+        vl_agg = df_tc_filtered.groupby(["vl_name", "region", "Channel", "cohort", "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+        
+        # Identify the Top N VLs by overall Net Additions to filter the matrix
+        top_vl_names = df_tc_filtered.groupby("vl_name")["net_new_additions"].sum().nlargest(n_vls).index
+        vl_agg_filtered = vl_agg[vl_agg["vl_name"].isin(top_vl_names)]
+        
+        # Sort to cluster weeks under each VL cleanly
+        vl_agg_filtered = vl_agg_filtered.sort_values(by=["vl_name", "Week_start"], ascending=[True, False])
+        st.dataframe(vl_agg_filtered, use_container_width=True, hide_index=True)
 
 # ==============================================================================
 # TAB 3: EXECUTIVE SUMMARY & AI INSIGHTS
@@ -311,5 +352,4 @@ with tab3:
     * **Growing VLs (VGP Identified - Top 5):** VMC, AGILE CAREERS, We ventures, Aone venture, SR logistics
     * **Degrowing VLs (VGP Identified - Top 5):** Fastseek, Manstic, Jobless consultancy, Dedde Technologies, Devanta enterprises
     """
-    
     st.info(summary_text)
