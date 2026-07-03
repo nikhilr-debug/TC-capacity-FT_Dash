@@ -297,7 +297,6 @@ def fetch_targets_mtd():
             st.error(f"⚠️ Target Data Pipeline Sync Error: {e}")
         return pd.DataFrame()
 
-# Hardcoded Target Generators for WTD
 def fetch_targets_wtd(target_type, week_num):
     week_keys = [25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
     
@@ -365,7 +364,6 @@ def fetch_targets_wtd(target_type, week_num):
         
     return pd.DataFrame(compiled_targets)
 
-# Channel JSON Mapping Logic
 CHANNEL_MAP = {
   "Existing VL - VGP Approved": [
     "Delhive", "4M Enterprises", "Allz Infra", "Viraj Patil", "Logix Manpower Service", 
@@ -394,7 +392,6 @@ def classify_channel(vl_name, vl_status):
             return channel
     return "Existing VL"
 
-# TC Targets mapping
 @st.cache_data
 def fetch_tc_targets():
     return pd.DataFrame({
@@ -414,7 +411,8 @@ def fetch_mock_tc_data():
     for d in dates:
         week_start = d - datetime.timedelta(days=d.weekday())
         for _ in range(50):
-            vl = random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A", "Fastseek"])
+            # Included 'Unmapped Vendor' to trigger "Existing VL" fallback correctly
+            vl = random.choice(["Delhive", "VMC", "Direct Channel", "New Vendor A", "Fastseek", "Unmapped Vendor"])
             stat = "New" if vl == "New Vendor A" else "Active"
             
             active = random.randint(10, 100)
@@ -928,20 +926,15 @@ with tab2:
             elif val < 0: text_color = "var(--red)"
         col.markdown(f'<div class="kpi" style="padding:10px;"><div class="kpi-lbl" style="font-size:9px;">{label}</div><div class="kpi-val" style="font-size:20px; color:{text_color};">{val:,}</div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="sec-ttl">Detailed Analytical Modals</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-ttl">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
 
     def style_tc_dataframe(dataframe, group_col):
-        unique_groups = dataframe[group_col].unique()
-        
         def highlight_rows(row):
             if row["Week_start"] == "-": 
-                return ["background-color: #21263a; font-weight: 800; border-top: 1px solid rgba(255,255,255,0.15)"] * len(row)
-            try:
-                idx = list(unique_groups).index(row[group_col])
-                bg = "background-color: rgba(255,255,255,0.03)" if idx % 2 == 0 else "background-color: transparent"
-                return [bg] * len(row)
-            except:
-                return [""] * len(row)
+                return ["background-color: #21263a; font-weight: 800; border-top: 2px solid rgba(255,255,255,0.3)"] * len(row)
+            elif row["Week_start"] == "SUBTOTAL":
+                return ["background-color: rgba(255,255,255,0.08); font-weight: 700; border-top: 1px dashed rgba(255,255,255,0.2)"] * len(row)
+            return [""] * len(row)
                 
         def format_net_adds(val):
             if isinstance(val, (int, float)):
@@ -952,19 +945,35 @@ with tab2:
         return dataframe.style.apply(highlight_rows, axis=1).map(format_net_adds, subset=["net_new_additions"])
 
     def get_standard_table(group_col):
-        agg = df_tc.groupby([group_col, "Week_start"])[["active_tcs", "existing_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+        # 1. Base Aggregation
+        agg = df_tc.groupby([group_col, "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
         agg = agg.sort_values(by=[group_col, "Week_start"], ascending=[True, False])
-        totals = agg.sum(numeric_only=True).to_frame().T
-        totals[group_col] = "TOTAL"
-        totals["Week_start"] = "-"
-        return pd.concat([agg, totals], ignore_index=True)
+        agg["Week_start"] = agg["Week_start"].astype(str)
+        
+        # 2. Iteratively Inject Subtotals
+        final_rows = []
+        for group_name, group_df in agg.groupby(group_col, sort=False):
+            final_rows.append(group_df)
+            subtotal = group_df.sum(numeric_only=True).to_frame().T
+            subtotal[group_col] = group_name
+            subtotal["Week_start"] = "SUBTOTAL"
+            final_rows.append(subtotal)
+            
+        res_df = pd.concat(final_rows, ignore_index=True)
+        
+        # 3. Inject Grand Total
+        grand_total = agg.sum(numeric_only=True).to_frame().T
+        grand_total[group_col] = "GRAND TOTAL"
+        grand_total["Week_start"] = "-"
+        
+        return pd.concat([res_df, grand_total], ignore_index=True)
 
     with st.expander("📊 Channel View Drill-down"):
-        st.dataframe(style_tc_dataframe(get_standard_table("Channel"), "Channel"), use_container_width=True, hide_index=True)
+        st.dataframe(style_tc_dataframe(get_standard_table("Channel"), "Channel"), width='stretch', hide_index=True)
     with st.expander("📍 Region View Drill-down"):
-        st.dataframe(style_tc_dataframe(get_standard_table("region"), "region"), use_container_width=True, hide_index=True)
+        st.dataframe(style_tc_dataframe(get_standard_table("region"), "region"), width='stretch', hide_index=True)
     with st.expander("👥 Cohort View Drill-down"):
-        st.dataframe(style_tc_dataframe(get_standard_table("cohort"), "cohort"), use_container_width=True, hide_index=True)
+        st.dataframe(style_tc_dataframe(get_standard_table("cohort"), "cohort"), width='stretch', hide_index=True)
         
     with st.expander("🏆 Top N VLs Configurable View"):
         col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
@@ -981,12 +990,30 @@ with tab2:
         vl_totals = tmp_tc.groupby("vl_name")[tc_sort_col].sum().reset_index()
         top_vls = vl_totals.sort_values(by=tc_sort_col, ascending=is_tc_asc).head(tc_n_vls)["vl_name"].tolist()
         
-        vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "region", "Channel", "cohort", "Week_start"])[["active_tcs", "existing_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+        vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "region", "Channel", "cohort", "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
         
         vl_agg["vl_name"] = pd.Categorical(vl_agg["vl_name"], categories=top_vls, ordered=True)
         vl_agg_filtered = vl_agg.sort_values(by=["vl_name", "Week_start"], ascending=[True, False])
+        vl_agg_filtered["Week_start"] = vl_agg_filtered["Week_start"].astype(str)
         
-        st.dataframe(style_tc_dataframe(vl_agg_filtered, "vl_name"), use_container_width=True, hide_index=True)
+        # Inject Subtotals per Top N VL
+        final_vl_rows = []
+        for vl_name, group_df in vl_agg_filtered.groupby("vl_name", sort=False):
+            if group_df.empty: continue
+            final_vl_rows.append(group_df)
+            subtotal = group_df.sum(numeric_only=True).to_frame().T
+            subtotal["vl_name"] = vl_name
+            subtotal["region"] = "-"
+            subtotal["Channel"] = "-"
+            subtotal["cohort"] = "-"
+            subtotal["Week_start"] = "SUBTOTAL"
+            final_vl_rows.append(subtotal)
+            
+        if final_vl_rows:
+            vl_res_df = pd.concat(final_vl_rows, ignore_index=True)
+            st.dataframe(style_tc_dataframe(vl_res_df, "vl_name"), width='stretch', hide_index=True)
+        else:
+            st.info("No Vendor Lines match the selected filters.")
 
 # ==============================================================================
 # TAB 3: AI NARRATIVE & RCA
