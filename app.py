@@ -793,6 +793,47 @@ with tab1:
     with k5: 
         st.markdown(kpi_html("Target Gap (Proj)", f'<span style="color:{g_color}">{fmt(gap_tot)}</span>', pill_html=pill_markup(gap_tot_pct)), unsafe_allow_html=True)
 
+    # --- NEW SPOTLIGHT FEATURE: TOP 5 MOVERS ---
+    section("🔍 Spotlight: Top 5 Contribution Movers")
+    m_col1, m_col2 = st.columns(2)
+    
+    def generate_movers_html(df, name_col, title):
+        if df.empty: return ""
+        growers = df[df['delta'] > 0].sort_values('delta', ascending=False).head(5)
+        decliners = df[df['delta'] < 0].sort_values('delta', ascending=True).head(5)
+        
+        html = f'<div class="rca-card" style="padding:20px; margin-bottom:0;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
+        html += '<div style="display:flex; gap:20px;">'
+        
+        # Growers Column
+        html += '<div style="flex:1;">'
+        html += '<div style="font-size:10.5px; color:var(--green); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📈 Top 5 Expansion</div>'
+        if not growers.empty:
+            for _, r in growers.iterrows():
+                html += f'<div style="display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-bottom:1px dashed var(--br);"><span style="color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80%; font-weight:500;">{r[name_col]}</span><span style="color:var(--green); font-weight:800;">+{int(r["delta"])}</span></div>'
+        else:
+            html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No expansion recorded.</div>'
+        html += '</div>'
+        
+        # Decliners Column
+        html += '<div style="flex:1;">'
+        html += '<div style="font-size:10.5px; color:var(--red); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📉 Top 5 Contraction</div>'
+        if not decliners.empty:
+            for _, r in decliners.iterrows():
+                html += f'<div style="display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-bottom:1px dashed var(--br);"><span style="color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80%; font-weight:500;">{r[name_col]}</span><span style="color:var(--red); font-weight:800;">{int(r["delta"])}</span></div>'
+        else:
+            html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No contraction recorded.</div>'
+        html += '</div>'
+        
+        html += '</div></div>'
+        return html
+        
+    with m_col1:
+        st.markdown(generate_movers_html(client_mat, "company_name", "Client Profile Movers"), unsafe_allow_html=True)
+    with m_col2:
+        st.markdown(generate_movers_html(vl_master, "vl_name", "Vendor Line (VL) Movers"), unsafe_allow_html=True)
+
+
     if mode == "WTD" and ft in df.columns:
         df_trend = df.copy()
         df_trend['datetime'] = pd.to_datetime(df_trend[ft])
