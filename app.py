@@ -244,7 +244,7 @@ with tab1:
 # TAB 2: TC CAPACITY VIEW
 # ==============================================================================
 with tab2:
-    recent_weeks = df_tc["Week_start"].drop_duplicates().nlargest(tc_time_filter).tolist()
+    recent_weeks = df_tc["Week_start"].drop_duplicates().sort_values(ascending=False).head(tc_time_filter).tolist()    
     df_tc_filtered = df_tc[df_tc["Week_start"].isin(recent_weeks)]
     
     cur_wk_date = recent_weeks[0] if recent_weeks else None
