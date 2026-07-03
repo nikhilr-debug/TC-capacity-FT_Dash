@@ -28,17 +28,17 @@ CSS = """
   --text:      #eaeaea;
   --muted:     #8b8fa8;
   --faint:     #4a4f6a;
-  --r:         8px;
-  --rl:        12px;
+  --r:         10px;
+  --rl:        14px;
 
   --red:       #ff6b6b;
-  --red-bg:    #2d1515;
+  --red-bg:    rgba(255, 107, 107, 0.15);
   --red-b:     #e05252;
   --amber:     #ffc97a;
   --amber-bg:  #2d1e07;
   --amber-b:   #d4891a;
   --green:     #6dd67b;
-  --green-bg:  #102216;
+  --green-bg:  rgba(109, 214, 123, 0.15);
   --green-b:   #4a9e2f;
   --blue:      #7cb9f8;
   --blue-bg:   #0d1e38;
@@ -73,161 +73,180 @@ div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
   justify-content: space-between;
   margin-bottom: 1.25rem;
   padding-bottom: 1rem;
-  border-bottom: 0.5px solid var(--br2);
+  border-bottom: 1px solid var(--br2);
 }
 .dash-title {
-  font-size: 1.35rem;
+  font-size: 1.45rem;
   font-weight: 800;
   letter-spacing: -0.03em;
   color: var(--text);
 }
 .dash-title span { color: var(--blue); }
 .dash-meta {
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   color: var(--muted);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .sec-ttl {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .08em;
-  color: var(--muted);
-  margin: 1.5rem 0 .75rem;
+  color: var(--text);
+  margin: 1.75rem 0 1rem;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
-.sec-ttl-line { flex: 1; height: 0.5px; background: var(--br); }
+.sec-ttl-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--br2), transparent); }
 
+/* Beautiful KPI Cards */
 .kpi {
   background: var(--surface);
-  border: 0.5px solid var(--br);
+  border: 1px solid var(--br2);
   border-radius: var(--rl);
-  padding: 14px 16px;
+  padding: 16px 20px;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.kpi:hover {
+  transform: translateY(-2px);
+  border-color: rgba(255,255,255,0.2);
 }
 .kpi::before {
   content:'';
   position:absolute;
   top:0;left:0;right:0;
-  height:2px;
+  height:3px;
   background: linear-gradient(90deg, var(--blue-b), #b08cff);
 }
 .kpi-lbl {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .07em;
   color: var(--muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .kpi-val {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 800;
   font-variant-numeric: tabular-nums;
-  line-height: 1;
+  line-height: 1.1;
 }
 .kpi-sub { 
-  font-size: 11px; 
-  margin-top: 6px; 
+  font-size: 11.5px; 
+  margin-top: 8px; 
   color: var(--muted); 
   display: flex; 
-  gap: 6px; 
+  gap: 8px; 
   flex-wrap: wrap; 
   align-items: center;
 }
 
+/* Redesigned Modern Pills */
 .pill {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  border-radius: 20px;
-  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 10.5px;
   font-weight: 700;
   white-space: nowrap;
+  letter-spacing: 0.02em;
 }
-.pr { background: var(--red-bg);    color: var(--red); }
-.pg { background: var(--green-bg);  color: var(--green); }
-.pz { background: var(--surface2);  color: var(--muted); }
+.pr { background: var(--red-bg);    color: var(--red);   border: 1px solid rgba(255, 107, 107, 0.2); }
+.pg { background: var(--green-bg);  color: var(--green); border: 1px solid rgba(109, 214, 123, 0.2); }
+.pz { background: var(--surface3);  color: var(--muted); border: 1px solid var(--br); }
+.pb { background: var(--blue-bg);   color: var(--blue);  border: 1px solid rgba(124, 185, 248, 0.2); }
 
-.tw {
+/* Sleek HTML Tables container */
+.table-container {
   background: var(--surface);
-  border: 0.5px solid var(--br);
-  border-radius: 0px 0px var(--rl) var(--rl);
-  overflow: hidden;
-  margin-bottom: 15px;
+  border: 1px solid var(--br2);
+  border-radius: var(--rl);
+  overflow-x: auto;
+  margin-bottom: 24px;
+  box-shadow: 0 6px 16px -8px rgba(0,0,0,0.3);
 }
 .dash-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12px;
-  table-layout: fixed; 
+  font-size: 12.5px;
+  text-align: left;
+}
+.dash-table thead {
+  background: var(--surface2);
+  position: sticky;
+  top: 0;
+  z-index: 10;
 }
 .dash-table th {
-  text-align: left;
-  font-size: 10px;
+  padding: 12px 16px;
+  font-size: 10.5px;
+  font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: .05em;
-  padding: 8px 12px;
-  border-bottom: 0.5px solid var(--br2);
-  background: var(--surface2);
-  font-weight: 700;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--br2);
   white-space: nowrap;
 }
 .dash-table td {
-  padding: 8px 12px;
-  border-bottom: 0.5px solid var(--br);
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--br);
   color: var(--text);
-  white-space: nowrap;
   vertical-align: middle;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.dash-table tr:last-child td { border-bottom: none; }
-.dash-table tr:hover td { background: var(--surface2); }
+.dash-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+.dash-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+.dash-table tbody tr:last-child td {
+  border-bottom: none;
+}
 .n { text-align: right; font-variant-numeric: tabular-nums; }
+.td-muted { color: var(--muted); }
 
-.stButton > button {
-  background-color: var(--surface2) !important;
-  color: var(--muted) !important;
-  border: 0.5px solid var(--br) !important;
-  border-radius: 0px !important;
-  font-size: 10px !important;
-  font-weight: 700 !important;
-  text-transform: uppercase !important;
-  letter-spacing: 0.05em !important;
-  padding: 6px !important;
-  margin: 0 !important;
-  width: 100% !important; 
-}
-.stButton > button:hover {
-  color: var(--text) !important;
-  border-color: var(--blue) !important;
+/* Control Panels above Tables */
+.controls-row {
+  background: var(--surface);
+  border: 1px solid var(--br2);
+  border-radius: var(--rl);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
+/* Tabs Styling */
 button[data-baseweb="tab"] {
   background: transparent !important;
   color: var(--muted) !important;
   font-weight: 600 !important;
   font-size: 12px !important;
   border-radius: var(--r) !important;
-  padding: 6px 16px !important;
+  padding: 8px 20px !important;
 }
 button[data-baseweb="tab"][aria-selected="true"] {
-  background: var(--surface) !important;
+  background: var(--surface2) !important;
   color: var(--text) !important;
-  border: 0.5px solid var(--br) !important;
+  border: 1px solid var(--br2) !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
 }
 div[data-baseweb="tab-list"] {
-  background: var(--surface2) !important;
-  border: 0.5px solid var(--br) !important;
+  background: var(--surface) !important;
+  border: 1px solid var(--br) !important;
   border-radius: var(--rl) !important;
-  padding: 3px !important;
-  gap: 2px !important;
+  padding: 4px !important;
+  gap: 4px !important;
 }
 
 /* Custom RCA (AI Narrative) Styling */
@@ -235,48 +254,53 @@ div[data-baseweb="tab-list"] {
   background: var(--surface);
   border: 1px solid var(--br2);
   border-radius: var(--rl);
-  padding: 20px;
-  margin-bottom: 15px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  padding: 24px;
+  margin-bottom: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 .rca-ttl {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 800;
   color: var(--text);
-  margin-bottom: 12px;
+  margin-bottom: 14px;
   display: flex;
   align-items: center;
   gap: 8px;
+  border-bottom: 1px solid var(--br);
+  padding-bottom: 10px;
 }
 .rca-body {
-  font-size: 13px;
+  font-size: 13.5px;
   color: var(--muted);
   line-height: 1.6;
 }
 .rca-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 10px;
-  padding: 10px;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px 14px;
   background: var(--surface2);
   border-radius: var(--r);
   border-left: 3px solid transparent;
+  transition: transform 0.2s ease;
 }
+.rca-item:hover { transform: translateX(4px); }
 .rca-item.positive { border-left-color: var(--green); }
 .rca-item.negative { border-left-color: var(--red); }
-.rca-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; }
-.dot-g { background: var(--green); }
-.dot-r { background: var(--red); }
-.dot-b { background: var(--blue); }
+.rca-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; flex-shrink: 0; }
+.dot-g { background: var(--green); box-shadow: 0 0 8px rgba(109, 214, 123, 0.4); }
+.dot-r { background: var(--red); box-shadow: 0 0 8px rgba(255, 107, 107, 0.4); }
+.dot-b { background: var(--blue); box-shadow: 0 0 8px rgba(124, 185, 248, 0.4); }
 
-/* Filter Container Styling */
+/* Inline Filter Container */
 .inline-filter-container {
-    background: var(--surface2);
-    padding: 10px 15px;
-    border-radius: var(--r);
-    border: 1px solid var(--br);
-    margin-bottom: 15px;
+    background: var(--surface);
+    padding: 12px 20px;
+    border-radius: var(--rl);
+    border: 1px solid var(--br2);
+    margin-bottom: 16px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 </style>
 """
@@ -713,8 +737,8 @@ def volume_pill(val):
 
 def contr_markup(delta, contr):
     if pd.isna(contr) or delta == 0 or contr == 0: return '<span class="td-muted">—</span>'
-    if delta > 0: return f'<span style="color:var(--green); font-size:10px; font-weight:700;">{abs(contr):.1f}% Grw</span>'
-    return f'<span style="color:var(--red); font-size:10px; font-weight:700;">{abs(contr):.1f}% Dip</span>'
+    if delta > 0: return f'<span style="color:var(--green); font-size:10.5px; font-weight:700;">{abs(contr):.1f}% Grw</span>'
+    return f'<span style="color:var(--red); font-size:10.5px; font-weight:700;">{abs(contr):.1f}% Dip</span>'
 
 def kpi_html(label, value, sub="", pill_html=""):
     return f"""
@@ -723,22 +747,6 @@ def kpi_html(label, value, sub="", pill_html=""):
       <div class="kpi-val">{value}</div>
       <div class="kpi-sub">{sub} {pill_html}</div>
     </div>"""
-
-def draw_sortable_header(table_id, col_specs):
-    state_key = f"sort_state_{table_id}"
-    if state_key not in st.session_state:
-        st.session_state[state_key] = (col_specs[0][1], False)
-
-    current_col, current_desc = st.session_state[state_key]
-    grid_cols = st.columns([spec[2] for spec in col_specs])
-    
-    for idx, (label, field, weight) in enumerate(col_specs):
-        icon = " ▴" if current_col == field and not current_desc else (" ▾" if current_col == field else "")
-        if grid_cols[idx].button(f"{label}{icon}", key=f"btn_{table_id}_{str(field)}"):
-            if current_col == field: st.session_state[state_key] = (field, not current_desc)
-            else: st.session_state[state_key] = (field, True)
-            st.rerun()
-    return st.session_state[state_key]
 
 def section(title):
     st.markdown(f'<div class="sec-ttl">{title}<div class="sec-ttl-line"></div></div>', unsafe_allow_html=True)
@@ -815,14 +823,27 @@ with tab1:
             section("Client × Week Matrix View (FT Volume & WoW Changes)")
             matrix_src = df_trend.groupby(['company_name', 'Week_Start']).size().unstack(fill_value=0)
             
-            week_w = 80 / len(active_weeks) if active_weeks else 80
-            col_specs_week = [("Client Profile", "company_name", 20)] + [(f"W/C {w.strftime('%d %b')}", w, week_w) for w in active_weeks]
-            w_col, w_desc = draw_sortable_header("client_week_matrix_v15", col_specs_week)
-            
-            if w_col == "company_name" or w_col not in matrix_src.columns: matrix_src = matrix_src.sort_index(ascending=not w_desc)
-            else: matrix_src = matrix_src.sort_values(by=w_col, ascending=not w_desc)
+            # --- Dedicated Control Row for Matrix ---
+            m_cols = st.columns([2, 3, 5])
+            matrix_sort_opt = ["Client Profile"] + [f"W/C {w.strftime('%d %b')}" for w in active_weeks]
+            m_sort_col = m_cols[0].selectbox("Sort Matrix By", matrix_sort_opt, index=0, key="mat_sort")
+            m_asc = m_cols[1].radio("Matrix Order", ["Descending", "Ascending"], horizontal=True, key="mat_ord") == "Ascending"
+
+            if m_sort_col == "Client Profile":
+                matrix_src = matrix_src.sort_index(ascending=m_asc)
+            else:
+                sort_date = [w for w in active_weeks if f"W/C {w.strftime('%d %b')}" == m_sort_col][0]
+                if sort_date in matrix_src.columns:
+                    matrix_src = matrix_src.sort_values(by=sort_date, ascending=m_asc)
                 
-            m_tbl = '<div class="tw" style="overflow-x:auto;"><table class="dash-table"><tbody>'
+            # Native HTML Table Building
+            week_w = 80 / len(active_weeks) if active_weeks else 80
+            m_tbl = '<div class="table-container"><table class="dash-table"><thead><tr>'
+            m_tbl += '<th style="width: 20%;">Client Profile</th>'
+            for w in active_weeks:
+                m_tbl += f'<th class="n" style="width: {week_w}%;">W/C {w.strftime("%d %b")}</th>'
+            m_tbl += '</tr></thead><tbody>'
+
             for client_name, row in matrix_src.iterrows():
                 m_tbl += f'<tr><td style="width: 20%; font-weight:600;">{client_name}</td>'
                 for idx, week_monday in enumerate(active_weeks):
@@ -868,16 +889,19 @@ with tab1:
 
     if not client_mat.empty:
         section("All Clients Performance Analysis")
-        c_col, c_desc = draw_sortable_header("client_main_v15", [
-            ("Client Name", "company_name", 20), 
-            ("Cur", "cur", 10), ("Proj", "proj", 10), ("Prv", "prv", 10),
-            ("Target", "target", 10), ("Gap", "gap", 10), 
-            ("Δ Vol", "delta", 10), ("Δ %", "pct", 10), ("Contribution", "contr", 10)
-        ])
-        if c_col == "company_name" or c_col not in client_mat.columns: client_mat = client_mat.sort_index(ascending=not c_desc)
-        else: client_mat = client_mat.sort_values(c_col, ascending=not c_desc)
+        
+        c_cols = st.columns([2, 3, 5])
+        c_sort_opt = ["Cur", "Proj", "Prv", "Target", "Gap", "Δ Vol", "Δ %", "Client Name", "Contribution"]
+        c_sort = c_cols[0].selectbox("Sort Table By", c_sort_opt, index=0, key="cl_main_sort")
+        c_asc = c_cols[1].radio("Table Order", ["Descending", "Ascending"], horizontal=True, key="cl_main_ord") == "Ascending"
 
-        t_html = '<div class="tw"><table class="dash-table"><tbody>'
+        sort_map = {"Client Name": "company_name", "Cur": "cur", "Proj": "proj", "Prv": "prv", "Target": "target", "Gap": "gap", "Δ Vol": "delta", "Δ %": "pct", "Contribution": "contr"}
+        client_mat = client_mat.sort_values(sort_map[c_sort], ascending=c_asc)
+
+        t_html = '<div class="table-container"><table class="dash-table"><thead><tr>'
+        t_html += '<th style="width:20%;">Client Name</th><th class="n" style="width:10%;">Cur</th><th class="n" style="width:10%;">Proj</th><th class="n" style="width:10%;">Prv</th><th class="n" style="width:10%;">Target</th><th class="n" style="width:10%;">Gap</th><th class="n" style="width:10%;">Δ Vol</th><th class="n" style="width:10%;">Δ %</th><th class="n" style="width:10%;">Contribution</th>'
+        t_html += '</tr></thead><tbody>'
+        
         for _, r in client_mat.iterrows():
             c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
             g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
@@ -887,7 +911,7 @@ with tab1:
                 <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
                 <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
                 <td class="n" style="width:10%; color:var(--muted);">{fmt(r['target'])}</td>
-                <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br>{pill_markup(r['gap_pct'])}</td>
+                <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br><div style="margin-top:4px;">{pill_markup(r['gap_pct'])}</div></td>
                 <td class="n" style="width:10%;">{volume_pill(r['delta'])}</td>
                 <td class="n" style="width:10%;">{pill_markup(r['pct'])}</td>
                 <td class="n" style="width:10%;">{contr_markup(r['delta'], r['contr'])}</td>
@@ -898,25 +922,17 @@ with tab1:
     if not vl_by_client_mat.empty:
         section("Dynamic Vendor Line (VL) Analytics Tracker (By Client)")
         
-        v_left, v_mid, v_right = st.columns([1, 1, 2])
-        tracker_top_n = v_left.selectbox("Display Top N Configurable", [5, 10, 15, 20, 50], index=1)
-        tracker_sort = v_mid.selectbox("Sort Priority By", ["cur", "delta", "gap"], index=1)
-        tracker_trend = v_right.radio("Trend View", ["Top Growing / Performers", "Bottom Degrowing / Performers"], horizontal=True)
-        is_ascending = True if "Bottom" in tracker_trend else False
-
-        vbc_col, vbc_desc = draw_sortable_header("vl_by_client_table_v15", [
-            ("Vendor Line (VL)", "vl_name", 16), ("Client", "company_name", 14), 
-            ("Cur", "cur", 10), ("Proj", "proj", 10), ("Prv", "prv", 10),
-            ("Target", "target", 10), ("Gap", "gap", 10), 
-            ("Δ Vol", "delta", 10), ("Contribution", "contr", 10)
-        ])
+        v_left, v_mid, v_right = st.columns([2, 3, 5])
+        tracker_sort = v_left.selectbox("Sort Priority By", ["Cur Volume", "Δ Vol (Delta)", "Gap vs Target", "Vendor Line (VL)"], index=1)
+        tracker_asc = v_mid.radio("Trend View", ["Descending", "Ascending"], horizontal=True, key="vl_ord") == "Ascending"
         
-        if vbc_col in ["vl_name", "company_name"] or vbc_col not in vl_by_client_mat.columns: 
-            vl_by_client_mat = vl_by_client_mat.sort_values(by=tracker_sort, ascending=is_ascending).head(tracker_top_n)
-        else: 
-            vl_by_client_mat = vl_by_client_mat.sort_values(vbc_col, ascending=not vbc_desc).head(tracker_top_n)
+        vl_map = {"Cur Volume": "cur", "Δ Vol (Delta)": "delta", "Gap vs Target": "gap", "Vendor Line (VL)": "vl_name"}
+        vl_by_client_mat = vl_by_client_mat.sort_values(vl_map[tracker_sort], ascending=tracker_asc).head(50) # Auto top 50
         
-        t_html = '<div class="tw"><table class="dash-table"><tbody>'
+        t_html = '<div class="table-container"><table class="dash-table"><thead><tr>'
+        t_html += '<th style="width:16%;">Vendor Line (VL)</th><th style="width:14%;">Client</th><th class="n" style="width:10%;">Cur</th><th class="n" style="width:10%;">Proj</th><th class="n" style="width:10%;">Prv</th><th class="n" style="width:10%;">Target</th><th class="n" style="width:10%;">Gap</th><th class="n" style="width:10%;">Δ Vol</th><th class="n" style="width:10%;">Contribution</th>'
+        t_html += '</tr></thead><tbody>'
+        
         for _, r in vl_by_client_mat.iterrows():
             c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
             g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
@@ -927,7 +943,7 @@ with tab1:
                 <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
                 <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
                 <td class="n" style="width:10%; color:var(--muted);">{fmt(r['target'])}</td>
-                <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br>{pill_markup(r['gap_pct'])}</td>
+                <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br><div style="margin-top:4px;">{pill_markup(r['gap_pct'])}</div></td>
                 <td class="n" style="width:10%;">{volume_pill(r['delta'])}</td>
                 <td class="n" style="width:10%;">{contr_markup(r['delta'], r['contr'])}</td>
             </tr>"""
@@ -935,17 +951,18 @@ with tab1:
         st.markdown(t_html, unsafe_allow_html=True)
         
         with st.expander("📍 Expand for Regional Execution View"):
-            rc_col, rc_desc = draw_sortable_header("reg_client_table_v15", [
-                ("Region", "region", 15), ("Client Profile", "company_name", 15), 
-                ("Cur", "cur", 10), ("Proj", "proj", 10), ("Prv", "prv", 10),
-                ("Target", "target", 10), ("Gap", "gap", 10), 
-                ("Δ Vol", "delta", 10), ("Contribution", "contr", 10)
-            ])
+            rc_cols = st.columns([2, 3, 5])
+            r_sort = rc_cols[0].selectbox("Sort Priority By", ["Cur Volume", "Δ Vol (Delta)", "Gap vs Target", "Region"], index=1, key="reg_sort")
+            r_asc = rc_cols[1].radio("Trend View", ["Descending", "Ascending"], horizontal=True, key="reg_ord") == "Ascending"
+
             reg_client_mat = compute_comparison_matrix(df, ["region", "company_name"], t_df)
-            if rc_col in ["region", "company_name"] or rc_col not in reg_client_mat.columns: reg_client_mat = reg_client_mat.sort_index(ascending=not rc_desc)
-            else: reg_client_mat = reg_client_mat.sort_values(rc_col, ascending=not rc_desc)
+            r_map = {"Cur Volume": "cur", "Δ Vol (Delta)": "delta", "Gap vs Target": "gap", "Region": "region"}
+            reg_client_mat = reg_client_mat.sort_values(r_map[r_sort], ascending=r_asc)
             
-            t_html = '<div class="tw"><table class="dash-table"><tbody>'
+            t_html = '<div class="table-container"><table class="dash-table"><thead><tr>'
+            t_html += '<th style="width:15%;">Region</th><th style="width:15%;">Client Profile</th><th class="n" style="width:10%;">Cur</th><th class="n" style="width:10%;">Proj</th><th class="n" style="width:10%;">Prv</th><th class="n" style="width:10%;">Target</th><th class="n" style="width:10%;">Gap</th><th class="n" style="width:10%;">Δ Vol</th><th class="n" style="width:10%;">Contribution</th>'
+            t_html += '</tr></thead><tbody>'
+            
             for _, r in reg_client_mat.iterrows():
                 c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
                 g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
@@ -956,7 +973,7 @@ with tab1:
                     <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
                     <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
                     <td class="n" style="width:10%; color:var(--muted);">{fmt(r['target'])}</td>
-                    <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br>{pill_markup(r['gap_pct'])}</td>
+                    <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br><div style="margin-top:4px;">{pill_markup(r['gap_pct'])}</div></td>
                     <td class="n" style="width:10%;">{volume_pill(r['delta'])}</td>
                     <td class="n" style="width:10%;">{contr_markup(r['delta'], r['contr'])}</td>
                 </tr>"""
@@ -1008,28 +1025,28 @@ with tab2:
         if label == "Net Additions" and isinstance(val, (int, float)):
             if val > 0: text_color = "var(--green)"
             elif val < 0: text_color = "var(--red)"
-        col.markdown(f'<div class="kpi" style="padding:10px;"><div class="kpi-lbl" style="font-size:9px;">{label} <span style="color:var(--faint); font-weight:400; text-transform:none;">({cur_wk_date})</span></div><div class="kpi-val" style="font-size:20px; color:{text_color};">{val:,}</div></div>', unsafe_allow_html=True)
+        col.markdown(f'<div class="kpi" style="padding:14px;"><div class="kpi-lbl" style="font-size:10px;">{label} <br><span style="color:var(--faint); font-weight:500; font-size:9.5px; text-transform:none;">Week: {cur_wk_date}</span></div><div class="kpi-val" style="font-size:22px; color:{text_color}; margin-top:6px;">{val:,}</div></div>', unsafe_allow_html=True)
 
-    st.markdown('<div class="sec-ttl">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
+    st.markdown('<div class="sec-ttl" style="margin-top: 2rem;">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
 
     def style_tc_dataframe(dataframe, group_col):
         unique_groups = dataframe[group_col].unique()
         def highlight_rows(row):
             if row["Week Start"] == "-": 
-                return ["background-color: #21263a; font-weight: 800; border-top: 2px solid rgba(255,255,255,0.3)"] * len(row)
+                return ["background-color: var(--surface2); color: var(--text); font-weight: 800; border-top: 2px solid rgba(255,255,255,0.1)"] * len(row)
             elif row["Week Start"] == "SUBTOTAL":
-                return ["background-color: rgba(255,255,255,0.08); font-weight: 700; border-top: 1px solid rgba(255,255,255,0.2); border-bottom: 1px solid rgba(255,255,255,0.2)"] * len(row)
+                return ["background-color: rgba(255,255,255,0.04); font-weight: 700; border-top: 1px dashed rgba(255,255,255,0.1); border-bottom: 1px solid rgba(255,255,255,0.1)"] * len(row)
             try:
                 idx = list(unique_groups).index(row[group_col])
-                bg = "background-color: rgba(255,255,255,0.03)" if idx % 2 == 0 else "background-color: transparent"
+                bg = "background-color: rgba(255,255,255,0.015)" if idx % 2 == 0 else "background-color: transparent"
                 return [bg] * len(row)
             except:
                 return [""] * len(row)
                 
         def format_net_adds(val):
             if isinstance(val, (int, float)):
-                if val > 0: return 'color: #6dd67b; font-weight: 700;'
-                elif val < 0: return 'color: #ff6b6b; font-weight: 700;'
+                if val > 0: return 'color: #6dd67b; font-weight: 700; background-color: rgba(109, 214, 123, 0.05);'
+                elif val < 0: return 'color: #ff6b6b; font-weight: 700; background-color: rgba(255, 107, 107, 0.05);'
             return ''
             
         format_dict = {c: "{:,.0f}" for c in dataframe.columns if c not in [group_col, "Week Start"]}
