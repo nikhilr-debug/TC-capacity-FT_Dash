@@ -323,7 +323,7 @@ def fetch_targets_wtd(target_type, week_num):
         'Bigbasket': [0, 43, 43, 64, 144, 186, 333, 375, 508, 700, 918, 1000, 1200, 1383, 1463],
         'Amazon': [0, 9, 9, 13, 40, 54, 90, 104, 142, 197, 273, 320, 370, 441, 458],
         'XB': [28, 37, 37, 50, 67, 80, 128, 146, 205, 254, 331, 388, 473, 539, 586],
-        'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
+        'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
         'Small Clients': [0, 0, 0, 20, 50, 100, 150, 200, 300, 400, 500, 550, 600, 600, 600]
     }
     vl_dict = {
@@ -372,6 +372,7 @@ def fetch_targets_wtd(target_type, week_num):
         
     return pd.DataFrame(compiled_targets)
 
+# ── JSON Mapping for Channel classification Override ──────────────────────────
 CHANNEL_MAP = {
   "Existing VL - VGP Approved": [
     "Delhive", "4M Enterprises", "Allz Infra", "Viraj Patil", "Logix Manpower Service", 
@@ -397,7 +398,6 @@ def classify_channel(vl_name, vl_status):
         return "New"
     for channel, names in CHANNEL_MAP.items():
         if vl_name in names:
-            if "Existing VL" in channel: return "Existing VL"
             return channel
     return "Existing VL"
 
@@ -432,6 +432,7 @@ if not df_tc_raw.empty:
         cl = str(c).strip().lower().replace(" ", "_")
         if cl == "week_start": tc_col_map[c] = "Week_start"
         elif cl == "vl_name": tc_col_map[c] = "vl_name"
+        elif cl == "vl_status": tc_col_map[c] = "vl_status"
         elif cl == "region": tc_col_map[c] = "region"
         elif cl == "cohort": tc_col_map[c] = "cohort"
         elif cl == "channel": tc_col_map[c] = "Channel"
@@ -903,7 +904,6 @@ with tab1:
             t_html += "</tbody></table></div>"
             st.markdown(t_html, unsafe_allow_html=True)
 
-
 # ==============================================================================
 # TAB 2: TC CAPACITY VIEW
 # ==============================================================================
@@ -960,9 +960,8 @@ with tab2:
                 elif val < 0: return 'color: #ff6b6b; font-weight: 700;'
             return ''
             
-        # Ensure numbers render beautifully inside the static HTML blocks
         format_dict = {c: "{:,.0f}" for c in dataframe.columns if c not in [group_col, "Week Start"]}
-        return dataframe.style.format(format_dict).apply(highlight_rows, axis=1).map(format_net_adds, subset=["Sum of Net New Additions"])
+        return dataframe.style.format(format_dict).apply(highlight_rows, axis=1).map(format_net_adds, subset=["Net New Additions"])
 
     def render_tc_table(dataframe, group_col):
         if dataframe is None or dataframe.empty:
@@ -970,8 +969,6 @@ with tab2:
             return
         
         styled_df = style_tc_dataframe(dataframe, group_col)
-        
-        # We output this as raw HTML to completely disable table-level column sorting and lock the pivot structure
         try:
             html = styled_df.hide(axis="index").to_html(table_attributes='class="dash-table" style="width: 100%;"')
         except AttributeError:
@@ -983,10 +980,12 @@ with tab2:
         if df_tc.empty or group_col not in df_tc.columns or "Week_start" not in df_tc.columns: 
             return pd.DataFrame()
         
-        agg = df_tc.groupby([group_col, "Week_start"])[["new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]].sum().reset_index()
+        agg = df_tc.groupby([group_col, "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+        
+        tgt_map = df_tc_targets.set_index("Week_start")["Overall Addition"].to_dict()
+        agg["targets"] = agg["Week_start"].map(tgt_map).fillna(0).astype(int)
         
         agg = agg.sort_values(by=[group_col, "Week_start"], ascending=[True, False])
-        agg["Week_start"] = pd.to_datetime(agg["Week_start"]).dt.strftime('%d/%m/%Y')
         
         final_rows = []
         for group_name, group_df in agg.groupby(group_col, sort=False):
@@ -996,8 +995,11 @@ with tab2:
             subtotal[group_col] = group_name
             subtotal["Week_start"] = "SUBTOTAL"
             
+            gp_df = group_df.copy()
+            gp_df["Week_start"] = pd.to_datetime(gp_df["Week_start"]).dt.strftime('%d/%m/%Y')
+            
             final_rows.append(subtotal)
-            final_rows.append(group_df)
+            final_rows.append(gp_df)
             
         if not final_rows: return pd.DataFrame()
         res_df = pd.concat(final_rows, ignore_index=True)
@@ -1007,19 +1009,21 @@ with tab2:
         grand_total["Week_start"] = "-"
         res_df = pd.concat([res_df, grand_total], ignore_index=True)
         
-        cols_order = [group_col, "Week_start", "new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]
-        res_df = res_df[[c for c in cols_order if c in res_df.columns]]
-        
         rename_dict = {
             "Week_start": "Week Start",
-            "new_tcs": "Sum of New TCs",
-            "net_new_additions": "Sum of Net New Additions",
-            "active_tcs": "Sum of Active TCs",
-            "existing_tcs": "Sum of Existing TCs",
-            "resurrected_tcs": "Sum of Resurrected TCs",
-            "churned_tcs": "Sum of Churned TCs"
+            "active_tcs": "Active TCs",
+            "existing_tcs": "Existing TCs",
+            "resurrected_tcs": "Resurrected TCs",
+            "churned_tcs": "Churned TCs",
+            "new_tcs": "New TCs",
+            "targets": "Targets",
+            "net_new_additions": "Net New Additions"
         }
-        return res_df.rename(columns=rename_dict)
+        res_df = res_df.rename(columns=rename_dict)
+        
+        cols_order = [group_col, "Week Start", "Active TCs", "Existing TCs", "Resurrected TCs", "Churned TCs", "New TCs", "Targets", "Net New Additions"]
+        res_df = res_df[[c for c in cols_order if c in res_df.columns]]
+        return res_df
 
     with st.expander("📊 Channel View Drill-down"):
         render_tc_table(get_standard_table("Channel"), "Channel")
@@ -1034,7 +1038,7 @@ with tab2:
         tc_sort_col = col2.selectbox("Sort Priority By", ["net_new_additions", "active_tcs", "new_tcs", "churned_tcs", "existing_tcs"], index=0)
         tc_trend = col3.radio("Trend View (TC)", ["Top Performers", "Bottom Performers"], horizontal=True)
         
-        tc_channel_opts = sorted(df_tc["Channel"].dropna().unique()) if "Channel" in df_tc.columns else []
+        tc_channel_opts = sorted(df_tc_raw["Channel"].dropna().unique()) if "Channel" in df_tc_raw.columns else []
         tc_channels = col4.multiselect("Filter by Channel (TC Specific)", tc_channel_opts, key="tc_exp_chan")
         
         tmp_tc = df_tc.copy()
@@ -1046,11 +1050,13 @@ with tab2:
             vl_totals = tmp_tc.groupby("vl_name")[tc_sort_col].sum().reset_index()
             top_vls = vl_totals.sort_values(by=tc_sort_col, ascending=is_tc_asc).head(tc_n_vls)["vl_name"].tolist()
             
-            vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "Week_start"])[["new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]].sum().reset_index()
+            vl_agg = tmp_tc[tmp_tc["vl_name"].isin(top_vls)].groupby(["vl_name", "Week_start"])[["active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs", "new_tcs", "net_new_additions"]].sum().reset_index()
+            
+            tgt_map = df_tc_targets.set_index("Week_start")["Overall Addition"].to_dict()
+            vl_agg["targets"] = vl_agg["Week_start"].map(tgt_map).fillna(0).astype(int)
             
             vl_agg["vl_name"] = pd.Categorical(vl_agg["vl_name"], categories=top_vls, ordered=True)
             vl_agg_filtered = vl_agg.sort_values(by=["vl_name", "Week_start"], ascending=[True, False])
-            vl_agg_filtered["Week_start"] = pd.to_datetime(vl_agg_filtered["Week_start"]).dt.strftime('%d/%m/%Y')
             
             final_vl_rows = []
             for vl_name, group_df in vl_agg_filtered.groupby("vl_name", sort=False):
@@ -1059,21 +1065,27 @@ with tab2:
                 subtotal["vl_name"] = vl_name
                 subtotal["Week_start"] = "SUBTOTAL"
                 
+                gp_df = group_df.copy()
+                gp_df["Week_start"] = pd.to_datetime(gp_df["Week_start"]).dt.strftime('%d/%m/%Y')
+                
                 final_vl_rows.append(subtotal)
-                final_vl_rows.append(group_df)
+                final_vl_rows.append(gp_df)
                 
             if final_vl_rows:
                 vl_res_df = pd.concat(final_vl_rows, ignore_index=True)
-                cols_order = ["vl_name", "Week_start", "new_tcs", "net_new_additions", "active_tcs", "existing_tcs", "resurrected_tcs", "churned_tcs"]
-                vl_res_df = vl_res_df[[c for c in cols_order if c in vl_res_df.columns]]
-                
                 rename_dict = {
-                    "Week_start": "Week Start", "new_tcs": "Sum of New TCs", "net_new_additions": "Sum of Net New Additions",
-                    "active_tcs": "Sum of Active TCs", "existing_tcs": "Sum of Existing TCs",
-                    "resurrected_tcs": "Sum of Resurrected TCs", "churned_tcs": "Sum of Churned TCs"
+                    "Week_start": "Week Start",
+                    "active_tcs": "Active TCs",
+                    "existing_tcs": "Existing TCs",
+                    "resurrected_tcs": "Resurrected TCs",
+                    "churned_tcs": "Churned TCs",
+                    "new_tcs": "New TCs",
+                    "targets": "Targets",
+                    "net_new_additions": "Net New Additions"
                 }
                 vl_res_df = vl_res_df.rename(columns=rename_dict)
-                
+                cols_order = ["vl_name", "Week Start", "Active TCs", "Existing TCs", "Resurrected TCs", "Churned TCs", "New TCs", "Targets", "Net New Additions"]
+                vl_res_df = vl_res_df[[c for c in cols_order if c in vl_res_df.columns]]
                 render_tc_table(vl_res_df, "vl_name")
             else:
                 st.info("No Vendor Lines match the selected filters.")
