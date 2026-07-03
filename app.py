@@ -310,6 +310,13 @@ def fetch_targets_mtd():
 
 def fetch_targets_wtd(target_type, week_num):
     week_keys = [25, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40]
+    
+    master_totals = {
+        "Overall": [0, 6176, 6459, 7190, 8021, 9326, 10447, 11801, 13180, 14918, 16325, 17783, 18879, 20351, 20851],
+        "VL":      [0, 5628, 6167, 6580, 7172, 7887, 8592,  9210, 10065, 11016, 11719, 12694, 13126, 13774, 13829],
+        "DC":      [0,  408,  434,  602,  958, 1302, 1893,  2268,  2934,  3637,  4440,  5022,  5735,  6588,  7002]
+    }
+    
     overall_dict = {
         'Blinkit': [3537, 3537, 3760, 3760, 3760, 3960, 4177, 4277, 4427, 4577, 4829, 4929, 4979, 4979, 4979],
         'Swiggy Food': [887, 1243, 1314, 1428, 1685, 1929, 2171, 2418, 2763, 3019, 3269, 3574, 3876, 4223, 4488],
@@ -367,8 +374,16 @@ def fetch_targets_wtd(target_type, week_num):
     else: w_idx = 1
         
     compiled_targets = []
+    current_sum = 0
     for client, weekly_targets in active_dict.items():
-        compiled_targets.append({"company_name": client, "target": weekly_targets[w_idx]})
+        val = weekly_targets[w_idx]
+        compiled_targets.append({"company_name": client, "target": val})
+        current_sum += val
+        
+    expected_total = master_totals[target_type][w_idx]
+    gap = expected_total - current_sum
+    if gap != 0 and expected_total != 0:
+        compiled_targets.append({"company_name": "Target Adjustment (Unallocated)", "target": gap})
         
     return pd.DataFrame(compiled_targets)
 
@@ -550,7 +565,7 @@ df = df_base.copy()
 t_df = tgt_base.copy()
 df_tc = df_tc_raw.copy()
 
-# Fix for target mapping replication: enforce strictly granular matching
+# Enforce strict Exact-Group Target Mapping (Left Join Only)
 def compute_comparison_matrix(dataframe, group_key, target_df=None):
     if ft not in dataframe.columns: return pd.DataFrame()
     group_cols = group_key if isinstance(group_key, list) else [group_key]
@@ -568,7 +583,7 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
 
     if target_df is not None and not target_df.empty:
         missing_cols = [k for k in group_cols if k not in target_df.columns]
-        if not missing_cols:  # Enforce exact granularity matching
+        if not missing_cols:
             keys_to_merge = group_cols
             t_df_temp = target_df.copy()
             for k in keys_to_merge:
@@ -576,10 +591,11 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
             
             t_agg = t_df_temp.groupby(keys_to_merge)['target'].sum().reset_index()
             
-            if not res.empty: res = pd.merge(res, t_agg, on=keys_to_merge, how="outer")
+            if not res.empty: 
+                # Left join enforces SQL data as primary source
+                res = pd.merge(res, t_agg, on=keys_to_merge, how="left")
             else:
-                res = t_agg
-                res["cur"], res["prv"], res["l4w"] = 0, 0, 0
+                res["target"] = 0
         else: res["target"] = 0
     else:
         if res.empty: res = pd.DataFrame(columns=group_cols + ["cur", "prv", "l4w", "target"])
@@ -706,7 +722,8 @@ vl_master = compute_comparison_matrix(df, "vl_name", t_df)
 vl_by_client_mat = compute_comparison_matrix(df, ["vl_name", "company_name"], t_df)
 reg_mat = compute_comparison_matrix(df, "region", t_df)
 
-total_target = int(client_mat['target'].sum()) if not client_mat.empty else 0
+# Target KPIs pulled explicitly from t_df so it accounts for Target Adjustments unlisted in SQL
+total_target = int(t_df['target'].sum()) if not t_df.empty else 0
 gap_tot = proj_tot - total_target
 gap_tot_pct = (gap_tot / total_target * 100) if total_target > 0 else np.nan
 daily_rr = l4w_tot / 28.0
@@ -950,12 +967,18 @@ with tab2:
     st.markdown('<div class="sec-ttl">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
 
     def style_tc_dataframe(dataframe, group_col):
+        unique_groups = dataframe[group_col].unique()
         def highlight_rows(row):
             if row["Week Start"] == "-": 
                 return ["background-color: #21263a; font-weight: 800; border-top: 2px solid rgba(255,255,255,0.3)"] * len(row)
             elif row["Week Start"] == "SUBTOTAL":
                 return ["background-color: rgba(255,255,255,0.08); font-weight: 700; border-top: 1px solid rgba(255,255,255,0.2); border-bottom: 1px solid rgba(255,255,255,0.2)"] * len(row)
-            return [""] * len(row)
+            try:
+                idx = list(unique_groups).index(row[group_col])
+                bg = "background-color: rgba(255,255,255,0.03)" if idx % 2 == 0 else "background-color: transparent"
+                return [bg] * len(row)
+            except:
+                return [""] * len(row)
                 
         def format_net_adds(val):
             if isinstance(val, (int, float)):
@@ -963,7 +986,8 @@ with tab2:
                 elif val < 0: return 'color: #ff6b6b; font-weight: 700;'
             return ''
             
-        return dataframe.style.apply(highlight_rows, axis=1).map(format_net_adds, subset=["Net New Additions"])
+        format_dict = {c: "{:,.0f}" for c in dataframe.columns if c not in [group_col, "Week Start"]}
+        return dataframe.style.format(format_dict).apply(highlight_rows, axis=1).map(format_net_adds, subset=["Net New Additions"])
 
     def get_standard_table(dataframe, group_col):
         if dataframe.empty or group_col not in dataframe.columns or "Week_start" not in dataframe.columns: 
@@ -1022,6 +1046,7 @@ with tab2:
         cols_order = [group_col, "Week Start", "Active TCs", "Existing TCs", "Resurrected TCs", "Churned TCs", "New TCs", "Targets", "Net New Additions"]
         return res_df[[c for c in cols_order if c in res_df.columns]]
 
+    # ── Using st.dataframe restores the Streamlit Canvas (and its toolbar) ──
     with st.expander("📊 Channel View Drill-down"):
         df_channel = get_standard_table(df_tc, "Channel")
         if not df_channel.empty:
