@@ -57,31 +57,53 @@ html, body, [class*="css"], .stApp {
 
 #MainMenu, footer { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
-header { background: transparent !important; }
 
-/* Aggressive Sidebar Toggle Visibility Fix */
-button[kind="header"], 
-[data-testid="collapsedControl"], 
-[data-testid="stSidebarCollapsedControl"] {
+/* Foolproof Sidebar Toggle Visibility Fix */
+header[data-testid="stHeader"] {
+  background: transparent !important;
+  pointer-events: none !important; /* Prevents invisible header from blocking clicks */
+}
+header[data-testid="stHeader"] * {
+  pointer-events: auto !important;
+}
+
+div[data-testid="collapsedControl"],
+div[data-testid="stSidebarCollapsedControl"] {
+  z-index: 999999 !important;
+  display: flex !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+
+button[aria-label="Expand sidebar"],
+button[aria-label="Collapse sidebar"],
+[data-testid="collapsedControl"] button,
+button[kind="header"] {
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: var(--r) !important;
   color: #ffffff !important;
   z-index: 999999 !important;
-  opacity: 1 !important;
   visibility: visible !important;
+  opacity: 1 !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+  transition: all 0.2s ease !important;
+  pointer-events: auto !important;
 }
-button[kind="header"]:hover, 
-[data-testid="collapsedControl"]:hover, 
-[data-testid="stSidebarCollapsedControl"]:hover {
+
+button[aria-label="Expand sidebar"]:hover,
+button[aria-label="Collapse sidebar"]:hover,
+[data-testid="collapsedControl"] button:hover,
+button[kind="header"]:hover {
   background-color: var(--surface3) !important;
   border-color: var(--blue) !important;
 }
-button[kind="header"] svg, 
-[data-testid="collapsedControl"] svg, 
-[data-testid="stSidebarCollapsedControl"] svg,
-header svg {
+
+button[aria-label="Expand sidebar"] svg,
+button[aria-label="Collapse sidebar"] svg,
+[data-testid="collapsedControl"] button svg,
+button[kind="header"] svg {
   fill: #ffffff !important;
   color: #ffffff !important;
   stroke: #ffffff !important;
