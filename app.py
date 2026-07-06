@@ -59,32 +59,47 @@ html, body, [class*="css"], .stApp {
 #MainMenu, footer { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
 
-/* Make the header transparent and click-through to prevent invisible blocking shields */
-header[data-testid="stHeader"] { 
-  background-color: transparent !important; 
-  pointer-events: none !important;
+/* --- NATIVE SIDEBAR TOGGLE FIX --- */
+/* Make the header transparent without disabling pointer events so clicks register naturally */
+header[data-testid="stHeader"] {
+  background-color: transparent !important;
 }
 
-/* Style the native expand/collapse toggle so it looks premium and re-enable clicks */
-[data-testid="collapsedControl"],
+/* Pin and style the native expand toggle */
+[data-testid="collapsedControl"], 
 [data-testid="stSidebarCollapsedControl"] {
-  pointer-events: auto !important; 
+  position: fixed !important;
+  top: 15px !important;
+  left: 15px !important;
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: 8px !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
   transition: all 0.2s ease !important;
   z-index: 999999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 8px !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
+
 [data-testid="collapsedControl"]:hover,
 [data-testid="stSidebarCollapsedControl"]:hover {
   background-color: var(--surface3) !important;
   border-color: var(--blue) !important;
+  transform: scale(1.05) !important;
 }
+
 [data-testid="collapsedControl"] svg,
 [data-testid="stSidebarCollapsedControl"] svg {
   color: #ffffff !important;
   fill: #ffffff !important;
+  width: 24px !important;
+  height: 24px !important;
 }
 
 .block-container {
@@ -581,10 +596,6 @@ if "Week_start" in df_tc_raw.columns:
 if "vl_name" in df_tc_raw.columns:
     df_tc_raw["Channel"] = df_tc_raw.apply(lambda row: classify_channel(row.get("vl_name"), row.get("vl_status", "")), axis=1)
 
-# ── Global Scope Temporal Anchoring ───────────────────────────────────────────
-today = datetime.date.today()
-yesterday = today - datetime.timedelta(days=1)
-
 # ── Sidebar Controls & Filters (Global & FT Focused) ──────────────────────────
 st.sidebar.markdown("### 🛠️ Data Controls")
 if st.sidebar.button("🔄 Force Refresh Data", type="primary"):
@@ -596,31 +607,27 @@ mode = st.sidebar.selectbox("FT Comparison Window Mode", ["WTD", "MTD"])
 tc_time_filter = st.sidebar.number_input("TC Capacity N-Weeks Default", min_value=1, max_value=12, value=6)
 exclude_current = st.sidebar.checkbox("Exclude Current Incomplete Week", value=False)
 
-def get_windows(mode, exclude_current):
+# ── Global Scope Temporal Anchoring (Time-Travel Fix) ─────────────────────────
+today = datetime.date.today()
+
+# If exclude_current is checked, we anchor the entire application to the end of last week.
+if exclude_current:
+    dow = today.weekday()
+    this_monday = today - datetime.timedelta(days=dow)
+    reference_date = this_monday - datetime.timedelta(days=1)
+else:
+    reference_date = today - datetime.timedelta(days=1)
+
+def get_windows(mode):
     if mode == "WTD":
-        dow = today.weekday()
-        if exclude_current:
-            cs = today - datetime.timedelta(days=dow + 7)
-            ce = cs + datetime.timedelta(days=6)
-            ps = cs - datetime.timedelta(days=7)
-            pe = ps + datetime.timedelta(days=6)
-        else:
-            cs = today - datetime.timedelta(days=dow)
-            ce = yesterday
-            if ce < cs: # Protect against Monday boundary logic
-                cs = today - datetime.timedelta(days=dow + 7)
-                ce = cs + datetime.timedelta(days=6)
-            ps = cs - datetime.timedelta(weeks=1)
-            pe = ce - datetime.timedelta(weeks=1)
+        dow = reference_date.weekday()
+        cs = reference_date - datetime.timedelta(days=dow)
+        ce = reference_date
+        ps = cs - datetime.timedelta(weeks=1)
+        pe = ce - datetime.timedelta(weeks=1)
     else:
-        cs = today.replace(day=1)
-        ce = yesterday
-        if ce < cs: # Protect against 1st of month boundary logic
-            pm = today.month - 1 or 12
-            py = today.year if today.month > 1 else today.year - 1
-            cs = today.replace(year=py, month=pm, day=1)
-            ce = yesterday
-            
+        cs = reference_date.replace(day=1)
+        ce = reference_date
         pm = cs.month - 1 or 12
         py = cs.year if cs.month > 1 else cs.year - 1
         ps = cs.replace(year=py, month=pm, day=1)
@@ -628,7 +635,7 @@ def get_windows(mode, exclude_current):
         pe = ps + datetime.timedelta(days=offset)
     return cs, ce, ps, pe
 
-cs, ce, ps, pe = get_windows(mode, exclude_current)
+cs, ce, ps, pe = get_windows(mode)
 
 st.sidebar.markdown("### 🔍 Placements (FT) Filters")
 
@@ -655,8 +662,9 @@ if mode == "MTD":
         elif all(v not in dc_vendors for v in selected_vls): t_type = "VL"
         
     weeks_in_month = set()
-    num_days = (cs.replace(month=cs.month%12+1, day=1) - datetime.timedelta(days=1)).day if cs.month < 12 else 31
-    for d in range(1, num_days + 1):
+    next_month = cs.replace(day=28) + datetime.timedelta(days=4)
+    total_days_in_month = (next_month - datetime.timedelta(days=next_month.day)).day
+    for d in range(1, total_days_in_month + 1):
         dt = datetime.date(cs.year, cs.month, d)
         weeks_in_month.add(dt.isocalendar()[1])
     
@@ -775,7 +783,7 @@ st.markdown(f"""
 <div class="dash-header">
   <div>
     <div class="dash-title">Vahan <span>Performance Analytics</span> Dashboard</div>
-    <div class="dash-meta"><span class="live-dot"></span>Live Lookback Tracking · Active Bounds as of Yesterday</div>
+    <div class="dash-meta"><span class="live-dot"></span>Live Lookback Tracking · Active Bounds as of {reference_date.strftime('%b %d')}</div>
   </div>
   <div><span class="pill pb" style="font-size:11px;">Current: {cs.strftime('%b %d')} - {ce.strftime('%b %d')} vs Previous: {ps.strftime('%b %d')} - {pe.strftime('%b %d')}</span></div>
 </div>""", unsafe_allow_html=True)
@@ -907,9 +915,9 @@ with tab1:
         df_trend['datetime'] = pd.to_datetime(df_trend[ft])
         df_trend['Week_Start'] = df_trend['datetime'].dt.to_period('W').dt.start_time.dt.date
         
-        dow = today.weekday()
-        this_week_monday = today - datetime.timedelta(days=dow)
-        if exclude_current: df_trend = df_trend[df_trend['Week_Start'] < this_week_monday]
+        # Trend chart anchored cleanly to reference date
+        this_week_monday = reference_date - datetime.timedelta(days=reference_date.weekday())
+        df_trend = df_trend[df_trend['Week_Start'] <= this_week_monday]
             
         if not df_trend.empty:
             max_trend_w = df_trend['Week_Start'].max()
@@ -1102,8 +1110,8 @@ with tab1:
 # TAB 2: TC Capacity VIEW
 # ==============================================================================
 with tab2:
-    all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
-    if exclude_current and len(all_weeks) > 0: all_weeks = all_weeks[1:]
+    # Safely align TC weeks to the reference date
+    all_weeks = sorted([w for w in df_tc_raw["Week_start"].dropna().unique() if w <= reference_date], reverse=True) if "Week_start" in df_tc_raw.columns else []
 
     # TC Global Week Filter
     st.markdown('<div class="inline-filter-container">', unsafe_allow_html=True)
@@ -1115,12 +1123,12 @@ with tab2:
         df_tc_filtered = df_tc_filtered[df_tc_filtered["Week_start"].isin(tc_sel_weeks)]
 
     if mode == "MTD":
-        # Sum targets specifically via explicitly mapping the isolated weeks
-        weeks_in_month_list = list(weeks_in_month) if 'weeks_in_month' in locals() else []
-        tc_month_targets = df_tc_targets[df_tc_targets["Week number"].isin(weeks_in_month_list)]
+        # Dynamic Target Aggregation: Safely sum targets only for the weeks matching the MTD view
+        month_target_weeks = [w for w in all_weeks if w.month == cs.month and w.year == cs.year]
+        tc_month_targets = df_tc_targets[df_tc_targets["Week_start"].isin(month_target_weeks)]
         overall_target = tc_month_targets["Overall Addition"].sum() if not tc_month_targets.empty else 0
         
-        cur_wk_data = df_tc_filtered[pd.to_datetime(df_tc_filtered["Week_start"]).dt.month == cs.month]
+        cur_wk_data = df_tc_filtered[df_tc_filtered["Week_start"].isin(month_target_weeks)]
         tc_display_date = cs.strftime('%b %Y')
         
         kpi_new = cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0
