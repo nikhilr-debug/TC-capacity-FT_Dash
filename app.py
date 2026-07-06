@@ -59,32 +59,48 @@ html, body, [class*="css"], .stApp {
 #MainMenu, footer { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
 
-/* --- SAFE SIDEBAR TOGGLE FIX --- */
+/* --- CUSTOM SIDEBAR TOGGLE BUTTON --- */
 header[data-testid="stHeader"] {
   background-color: transparent !important;
 }
 
-/* Style the native expand/collapse toggle so it looks premium without breaking functionality */
+/* Hide the native toggle since we're replacing it */
 [data-testid="collapsedControl"],
 [data-testid="stSidebarCollapsedControl"] {
-  background-color: var(--surface2) !important;
-  border: 1px solid var(--br2) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-  transition: all 0.2s ease !important;
-  z-index: 999999 !important;
-}
-[data-testid="collapsedControl"]:hover,
-[data-testid="stSidebarCollapsedControl"]:hover {
-  background-color: var(--surface3) !important;
-  border-color: var(--blue) !important;
-}
-[data-testid="collapsedControl"] svg,
-[data-testid="stSidebarCollapsedControl"] svg {
-  color: #ffffff !important;
-  fill: #ffffff !important;
+  display: none !important;
 }
 
+/* Our custom floating toggle */
+#sidebar-toggle-btn {
+  position: fixed;
+  top: 14px;
+  left: 14px;
+  z-index: 9999999;
+  width: 36px;
+  height: 36px;
+  background: var(--surface2);
+  border: 1px solid var(--br2);
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.15s ease;
+}
+#sidebar-toggle-btn:hover {
+  background: var(--surface3);
+  border-color: var(--blue);
+  transform: scale(1.08);
+}
+#sidebar-toggle-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: #eaeaea;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
 .block-container {
   padding: 2.5rem 2rem 4rem !important;
   max-width: 1440px !important;
@@ -331,6 +347,65 @@ div[data-baseweb="tab-list"] {
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
+# ── Custom Sidebar Toggle Button ──────────────────────────────────────────────
+st.markdown("""
+<div id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle Sidebar">
+  <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <line x1="3" y1="6"  x2="21" y2="6"/>
+    <line x1="3" y1="12" x2="21" y2="12"/>
+    <line x1="3" y1="18" x2="21" y2="18"/>
+  </svg>
+</div>
+
+<script>
+function toggleSidebar() {
+  // Find the native Streamlit sidebar toggle button and click it
+  const selectors = [
+    '[data-testid="collapsedControl"] button',
+    '[data-testid="stSidebarCollapsedControl"] button',
+    'button[kind="header"]',
+    'section[data-testid="stSidebar"] + div button',
+  ];
+
+  // Try clicking the hidden native button first
+  let nativeBtn = null;
+  for (const sel of selectors) {
+    nativeBtn = document.querySelector(sel);
+    if (nativeBtn) break;
+  }
+
+  if (nativeBtn) {
+    nativeBtn.click();
+    return;
+  }
+
+  // Fallback: toggle sidebar section directly
+  const sidebar = document.querySelector('section[data-testid="stSidebar"]');
+  if (!sidebar) return;
+
+  const isHidden = sidebar.style.display === 'none' || 
+                   sidebar.getAttribute('aria-expanded') === 'false' ||
+                   sidebar.classList.contains('st-emotion-cache-hidden');
+
+  if (isHidden) {
+    sidebar.style.display = '';
+    sidebar.style.transform = 'translateX(0)';
+    sidebar.style.width = '';
+  } else {
+    sidebar.style.transform = 'translateX(-110%)';
+    setTimeout(() => { sidebar.style.display = 'none'; }, 300);
+  }
+}
+
+// Make our button always visible even when sidebar is collapsed
+document.addEventListener('DOMContentLoaded', function() {
+  const btn = document.getElementById('sidebar-toggle-btn');
+  if (btn) {
+    document.body.appendChild(btn); // Hoist to body so it's never clipped
+  }
+});
+</script>
+""", unsafe_allow_html=True)
 
 PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
