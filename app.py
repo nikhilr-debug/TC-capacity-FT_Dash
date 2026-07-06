@@ -58,31 +58,45 @@ html, body, [class*="css"], .stApp {
 #MainMenu, footer { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
 
-/* Safe Sidebar Toggle Fix */
+/* --- BULLETPROOF SIDEBAR TOGGLE FIX --- */
 header[data-testid="stHeader"] {
-  background: transparent !important;
+  background-color: transparent !important;
 }
 
-[data-testid="collapsedControl"] {
+[data-testid="collapsedControl"], 
+[data-testid="stSidebarCollapsedControl"],
+button[kind="header"] {
+  background-color: var(--surface2) !important;
+  border: 1px solid var(--br2) !important;
+  border-radius: 8px !important;
+  color: #ffffff !important;
+  z-index: 9999999 !important;
+  position: relative !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: auto !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  background-color: var(--surface2) !important;
-  border: 1px solid var(--br2) !important;
-  border-radius: var(--r) !important;
-  color: #ffffff !important;
-  z-index: 999999 !important;
+  padding: 0.25rem !important;
+  margin: 0.5rem !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
   transition: all 0.2s ease !important;
-  margin-top: 5px !important;
 }
-[data-testid="collapsedControl"]:hover {
+
+[data-testid="collapsedControl"]:hover, 
+[data-testid="stSidebarCollapsedControl"]:hover,
+button[kind="header"]:hover {
   background-color: var(--surface3) !important;
   border-color: var(--blue) !important;
 }
-[data-testid="collapsedControl"] svg {
+
+[data-testid="collapsedControl"] svg, 
+[data-testid="stSidebarCollapsedControl"] svg,
+button[kind="header"] svg {
   fill: #ffffff !important;
   color: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
 .block-container {
