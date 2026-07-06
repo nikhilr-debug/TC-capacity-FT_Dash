@@ -607,35 +607,48 @@ mode = st.sidebar.selectbox("FT Comparison Window Mode", ["WTD", "MTD"])
 tc_time_filter = st.sidebar.number_input("TC Capacity N-Weeks Default", min_value=1, max_value=12, value=6)
 exclude_current = st.sidebar.checkbox("Exclude Current Incomplete Week", value=False)
 
-# ── Global Scope Temporal Anchoring (Time-Travel Fix) ─────────────────────────
-today = datetime.date.today()
-
-# If exclude_current is checked, we anchor the entire application to the end of last week.
-if exclude_current:
+def get_windows(mode, exclude_current):
+    today = datetime.date.today()
+    yesterday = today - datetime.timedelta(days=1)
     dow = today.weekday()
-    this_monday = today - datetime.timedelta(days=dow)
-    reference_date = this_monday - datetime.timedelta(days=1)
-else:
-    reference_date = today - datetime.timedelta(days=1)
-
-def get_windows(mode):
+    
     if mode == "WTD":
-        dow = reference_date.weekday()
-        cs = reference_date - datetime.timedelta(days=dow)
-        ce = reference_date
-        ps = cs - datetime.timedelta(weeks=1)
-        pe = ce - datetime.timedelta(weeks=1)
-    else:
-        cs = reference_date.replace(day=1)
-        ce = reference_date
+        if exclude_current:
+            cs = today - datetime.timedelta(days=dow + 7)
+            ce = cs + datetime.timedelta(days=6)
+            ps = cs - datetime.timedelta(days=7)
+            pe = ps + datetime.timedelta(days=6)
+        else:
+            cs = today - datetime.timedelta(days=dow)
+            ce = yesterday
+            if ce < cs: # Protect against Monday boundary logic
+                cs = today - datetime.timedelta(days=dow + 7)
+                ce = cs + datetime.timedelta(days=6)
+            ps = cs - datetime.timedelta(weeks=1)
+            pe = ce - datetime.timedelta(weeks=1)
+    else: # MTD
+        if exclude_current:
+            this_monday = today - datetime.timedelta(days=dow)
+            ce = this_monday - datetime.timedelta(days=1)
+            cs = ce.replace(day=1)
+        else:
+            cs = today.replace(day=1)
+            ce = yesterday
+            if ce < cs:
+                pm = today.month - 1 or 12
+                py = today.year if today.month > 1 else today.year - 1
+                cs = today.replace(year=py, month=pm, day=1)
+                ce = yesterday
+                
         pm = cs.month - 1 or 12
         py = cs.year if cs.month > 1 else cs.year - 1
         ps = cs.replace(year=py, month=pm, day=1)
         offset = (ce - cs).days
         pe = ps + datetime.timedelta(days=offset)
+        
     return cs, ce, ps, pe
 
-cs, ce, ps, pe = get_windows(mode)
+cs, ce, ps, pe = get_windows(mode, exclude_current)
 
 st.sidebar.markdown("### 🔍 Placements (FT) Filters")
 
@@ -662,9 +675,8 @@ if mode == "MTD":
         elif all(v not in dc_vendors for v in selected_vls): t_type = "VL"
         
     weeks_in_month = set()
-    next_month = cs.replace(day=28) + datetime.timedelta(days=4)
-    total_days_in_month = (next_month - datetime.timedelta(days=next_month.day)).day
-    for d in range(1, total_days_in_month + 1):
+    num_days = (cs.replace(month=cs.month%12+1, day=1) - datetime.timedelta(days=1)).day if cs.month < 12 else 31
+    for d in range(1, num_days + 1):
         dt = datetime.date(cs.year, cs.month, d)
         weeks_in_month.add(dt.isocalendar()[1])
     
@@ -769,8 +781,8 @@ if selected_vls:
 days_elapsed = (ce - cs).days + 1
 if mode == "WTD": total_days = 7
 else:
-    next_month = cs.replace(day=28) + datetime.timedelta(days=4)
-    total_days = (next_month - datetime.timedelta(days=next_month.day)).day
+    num_days = (cs.replace(month=cs.month%12+1, day=1) - datetime.timedelta(days=1)).day if cs.month < 12 else 31
+    total_days = num_days
 
 remaining_days = max(0, total_days - days_elapsed)
 
@@ -783,7 +795,7 @@ st.markdown(f"""
 <div class="dash-header">
   <div>
     <div class="dash-title">Vahan <span>Performance Analytics</span> Dashboard</div>
-    <div class="dash-meta"><span class="live-dot"></span>Live Lookback Tracking · Active Bounds as of {reference_date.strftime('%b %d')}</div>
+    <div class="dash-meta"><span class="live-dot"></span>Live Lookback Tracking · Active Bounds as of {ce.strftime('%b %d')}</div>
   </div>
   <div><span class="pill pb" style="font-size:11px;">Current: {cs.strftime('%b %d')} - {ce.strftime('%b %d')} vs Previous: {ps.strftime('%b %d')} - {pe.strftime('%b %d')}</span></div>
 </div>""", unsafe_allow_html=True)
@@ -916,7 +928,7 @@ with tab1:
         df_trend['Week_Start'] = df_trend['datetime'].dt.to_period('W').dt.start_time.dt.date
         
         # Trend chart anchored cleanly to reference date
-        this_week_monday = reference_date - datetime.timedelta(days=reference_date.weekday())
+        this_week_monday = ce - datetime.timedelta(days=ce.weekday())
         df_trend = df_trend[df_trend['Week_Start'] <= this_week_monday]
             
         if not df_trend.empty:
@@ -1110,8 +1122,10 @@ with tab1:
 # TAB 2: TC Capacity VIEW
 # ==============================================================================
 with tab2:
-    # Safely align TC weeks to the reference date
-    all_weeks = sorted([w for w in df_tc_raw["Week_start"].dropna().unique() if w <= reference_date], reverse=True) if "Week_start" in df_tc_raw.columns else []
+    all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
+    
+    if exclude_current and len(all_weeks) > 0: 
+        all_weeks = all_weeks[1:]
 
     # TC Global Week Filter
     st.markdown('<div class="inline-filter-container">', unsafe_allow_html=True)
@@ -1128,7 +1142,7 @@ with tab2:
         tc_month_targets = df_tc_targets[df_tc_targets["Week_start"].isin(month_target_weeks)]
         overall_target = tc_month_targets["Overall Addition"].sum() if not tc_month_targets.empty else 0
         
-        cur_wk_data = df_tc_filtered[df_tc_filtered["Week_start"].isin(month_target_weeks)]
+        cur_wk_data = df_tc_filtered[pd.to_datetime(df_tc_filtered["Week_start"]).dt.month == cs.month]
         tc_display_date = cs.strftime('%b %Y')
         
         kpi_new = cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0
