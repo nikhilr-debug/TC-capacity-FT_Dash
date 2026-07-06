@@ -55,36 +55,19 @@ html, body, [class*="css"], .stApp {
   line-height: 1.5;
 }
 
-/* Hide clutter but preserve the native sidebar toggle */
 #MainMenu, footer { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
-header[data-testid="stHeader"] { 
-    background-color: transparent !important; 
-    pointer-events: none !important;
-}
-header[data-testid="stHeader"] * {
-    pointer-events: auto !important;
-}
+header[data-testid="stHeader"] { background-color: transparent !important; }
 
-/* Style the native expand/collapse toggle so it looks premium without breaking functionality */
+/* FIXED SIDEBAR TOGGLE (Keeps button clickable & beautiful) */
 [data-testid="collapsedControl"],
 [data-testid="stSidebarCollapsedControl"] {
-  position: fixed !important;
-  top: 15px !important;
-  left: 15px !important;
-  z-index: 999999 !important;
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: 8px !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
   transition: all 0.2s ease;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 0.25rem !important;
-  opacity: 1 !important;
-  visibility: visible !important;
-  pointer-events: auto !important;
+  z-index: 999999 !important;
 }
 [data-testid="collapsedControl"]:hover,
 [data-testid="stSidebarCollapsedControl"]:hover {
@@ -236,33 +219,15 @@ div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
   padding: 12px 16px;
   border-bottom: 1px solid var(--br);
   color: var(--text);
-  vertical-align: middle;
   white-space: nowrap;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.dash-table tbody tr {
-  transition: background-color 0.2s ease;
-}
-.dash-table tbody tr:hover td {
-  background: rgba(255, 255, 255, 0.04);
-}
-.dash-table tbody tr:last-child td {
-  border-bottom: none;
-}
+.dash-table tr:last-child td { border-bottom: none; }
+.dash-table tr:hover td { background: rgba(255, 255, 255, 0.04); }
 .n { text-align: right; font-variant-numeric: tabular-nums; }
 .td-muted { color: var(--muted); }
-
-/* Control Panels above Tables */
-.controls-row {
-  background: var(--surface);
-  border: 1px solid var(--br2);
-  border-radius: var(--rl);
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
 
 /* Tabs Styling */
 button[data-baseweb="tab"] {
@@ -331,7 +296,6 @@ div[data-baseweb="tab-list"] {
 .dot-r { background: var(--red); box-shadow: 0 0 8px rgba(255, 107, 107, 0.4); }
 .dot-b { background: var(--blue); box-shadow: 0 0 8px rgba(124, 185, 248, 0.4); }
 
-/* Inline Filter Container */
 .inline-filter-container {
     background: var(--surface);
     padding: 12px 20px;
@@ -1106,7 +1070,6 @@ with tab2:
         df_tc_filtered = df_tc_filtered[df_tc_filtered["Week_start"].isin(tc_sel_weeks)]
 
     if mode == "MTD":
-        # Sum target for weeks falling in current month
         tc_month_targets = df_tc_targets[pd.to_datetime(df_tc_targets["Week_start"]).dt.month == cs.month]
         overall_target = tc_month_targets["Overall Addition"].sum() if not tc_month_targets.empty else 0
         
@@ -1118,7 +1081,6 @@ with tab2:
         kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
         kpi_net_additions = cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0
         
-        # Snapshot metrics take values from the most recent week available in the month subset
         if not cur_wk_data.empty:
             latest_week = cur_wk_data["Week_start"].max()
             latest_wk_data = cur_wk_data[cur_wk_data["Week_start"] == latest_week]
