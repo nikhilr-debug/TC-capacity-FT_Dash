@@ -1187,7 +1187,7 @@ with tab2:
 
         df_channel = get_standard_table(df_tc_ch, "Channel")
         if not df_channel.empty:
-            st.dataframe(style_tc_dataframe(df_channel, "Channel"), use_container_width=True, hide_index=True)
+            st.dataframe(style_tc_dataframe(df_channel, "Channel"), width="stretch", hide_index=True)
             
     with st.expander("📍 Region View Drill-down"):
         region_opts = sorted(df_tc_filtered["region"].dropna().unique()) if "region" in df_tc_filtered.columns else []
@@ -1196,7 +1196,7 @@ with tab2:
 
         df_region = get_standard_table(df_tc_reg, "region")
         if not df_region.empty:
-            st.dataframe(style_tc_dataframe(df_region, "region"), use_container_width=True, hide_index=True)
+            st.dataframe(style_tc_dataframe(df_region, "region"), width="stretch", hide_index=True)
             
     with st.expander("👥 Cohort View Drill-down"):
         cohort_opts = sorted(df_tc_filtered["cohort"].dropna().unique()) if "cohort" in df_tc_filtered.columns else []
@@ -1205,7 +1205,7 @@ with tab2:
 
         df_cohort = get_standard_table(df_tc_coh, "cohort")
         if not df_cohort.empty:
-            st.dataframe(style_tc_dataframe(df_cohort, "cohort"), use_container_width=True, hide_index=True)
+            st.dataframe(style_tc_dataframe(df_cohort, "cohort"), width="stretch", hide_index=True)
         
     with st.expander("🏆 Top N VLs Configurable View"):
         col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
@@ -1225,12 +1225,13 @@ with tab2:
             vl_totals = tmp_tc.groupby("vl_name")[tc_sort_col].sum().reset_index()
             top_vls = vl_totals.sort_values(by=tc_sort_col, ascending=is_tc_asc).head(tc_n_vls)["vl_name"].tolist()
             
+            # Pre-filter to satisfy Pandas 4.0 Categorical data constraints
+            tmp_tc = tmp_tc[tmp_tc["vl_name"].isin(top_vls)]
             tmp_tc["vl_name"] = pd.Categorical(tmp_tc["vl_name"], categories=top_vls, ordered=True)
-            tmp_tc = tmp_tc.dropna(subset=["vl_name"])
             
             df_vl = get_standard_table(tmp_tc, "vl_name")
             if not df_vl.empty:
-                st.dataframe(style_tc_dataframe(df_vl, "vl_name"), use_container_width=True, hide_index=True)
+                st.dataframe(style_tc_dataframe(df_vl, "vl_name"), width="stretch", hide_index=True)
         else:
             st.info("No Vendor Lines match the selected filters.")
 
