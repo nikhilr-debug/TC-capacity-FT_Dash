@@ -55,19 +55,36 @@ html, body, [class*="css"], .stApp {
   line-height: 1.5;
 }
 
+/* Hide clutter but preserve the native sidebar toggle */
 #MainMenu, footer { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
-header[data-testid="stHeader"] { background-color: transparent !important; }
+header[data-testid="stHeader"] { 
+    background-color: transparent !important; 
+    pointer-events: none !important;
+}
+header[data-testid="stHeader"] * {
+    pointer-events: auto !important;
+}
 
-/* FIXED SIDEBAR TOGGLE (Keeps button clickable & beautiful) */
+/* Style the native expand/collapse toggle so it looks premium without breaking functionality */
 [data-testid="collapsedControl"],
 [data-testid="stSidebarCollapsedControl"] {
+  position: fixed !important;
+  top: 15px !important;
+  left: 15px !important;
+  z-index: 999999 !important;
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: 8px !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
   transition: all 0.2s ease;
-  z-index: 999999 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  padding: 0.25rem !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
 }
 [data-testid="collapsedControl"]:hover,
 [data-testid="stSidebarCollapsedControl"]:hover {
@@ -219,15 +236,33 @@ div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
   padding: 12px 16px;
   border-bottom: 1px solid var(--br);
   color: var(--text);
-  white-space: nowrap;
   vertical-align: middle;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.dash-table tr:last-child td { border-bottom: none; }
-.dash-table tr:hover td { background: rgba(255, 255, 255, 0.04); }
+.dash-table tbody tr {
+  transition: background-color 0.2s ease;
+}
+.dash-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.04);
+}
+.dash-table tbody tr:last-child td {
+  border-bottom: none;
+}
 .n { text-align: right; font-variant-numeric: tabular-nums; }
 .td-muted { color: var(--muted); }
+
+/* Control Panels above Tables */
+.controls-row {
+  background: var(--surface);
+  border: 1px solid var(--br2);
+  border-radius: var(--rl);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
 
 /* Tabs Styling */
 button[data-baseweb="tab"] {
@@ -296,6 +331,7 @@ div[data-baseweb="tab-list"] {
 .dot-r { background: var(--red); box-shadow: 0 0 8px rgba(255, 107, 107, 0.4); }
 .dot-b { background: var(--blue); box-shadow: 0 0 8px rgba(124, 185, 248, 0.4); }
 
+/* Inline Filter Container */
 .inline-filter-container {
     background: var(--surface);
     padding: 12px 20px;
@@ -559,13 +595,13 @@ if "vl_name" in df_tc_raw.columns:
 today = datetime.date.today()
 yesterday = today - datetime.timedelta(days=1)
 
-# ── Sidebar Controls & Filters ────────────────────────────────────────────────
+# ── Sidebar Controls & Filters (Global & FT Focused) ──────────────────────────
 st.sidebar.markdown("### 🛠️ Data Controls")
 if st.sidebar.button("🔄 Force Refresh Data", type="primary"):
     st.cache_data.clear()
     st.rerun()
 
-st.sidebar.markdown("### 🎛️ Parameters")
+st.sidebar.markdown("### 🎛️ Global Parameters")
 mode = st.sidebar.selectbox("FT Comparison Window Mode", ["WTD", "MTD"])
 tc_time_filter = st.sidebar.number_input("TC Capacity N-Weeks Default", min_value=1, max_value=12, value=6)
 exclude_current = st.sidebar.checkbox("Exclude Current Incomplete Week", value=False)
@@ -592,17 +628,14 @@ def get_windows(mode, exclude_current):
         offset = (ce - cs).days
         ps = prev_start
         pe = prev_start + datetime.timedelta(days=offset)
-    return cs, ce, ps
+    return cs, ce, ps, pe
 
 cs, ce, ps, pe = get_windows(mode, exclude_current)
 
-st.sidebar.markdown("### 🔍 Global Segment Filters")
+st.sidebar.markdown("### 🔍 Placements (FT) Filters")
 
 client_opts = sorted(list(df_base["company_name"].dropna().unique())) if "company_name" in df_base.columns else []
-selected_clients = st.sidebar.multiselect("Client Scope (FT Only)", client_opts, key="global_filter_client")
-
-all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
-if exclude_current and len(all_weeks) > 0: all_weeks = all_weeks[1:]
+selected_clients = st.sidebar.multiselect("Client Scope", client_opts, key="global_filter_client")
 
 reg_ft = set(df_base["region"].dropna()) if "region" in df_base.columns else set()
 reg_tc = set(df_tc_raw["region"].dropna()) if "region" in df_tc_raw.columns else set()
@@ -617,7 +650,24 @@ selected_vls = st.sidebar.multiselect("Vendor Line Scope (Shared)", shared_vls)
 cs_week_num = cs.isocalendar()[1]
 
 if mode == "MTD":
-    tgt_base = fetch_targets_mtd()
+    dc_vendors = ["DC", "Direct Channel", "Basu Business Solutions"]
+    t_type = "Overall"
+    if selected_vls:
+        if all(v in dc_vendors for v in selected_vls): t_type = "DC"
+        elif all(v not in dc_vendors for v in selected_vls): t_type = "VL"
+        
+    weeks_in_month = set()
+    next_month_date = cs.replace(year=cs.year + 1, month=1, day=1) if cs.month == 12 else cs.replace(month=cs.month + 1, day=1)
+    num_days = (next_month_date - datetime.timedelta(days=1)).day
+    for d in range(1, num_days + 1):
+        dt = datetime.date(cs.year, cs.month, d)
+        weeks_in_month.add(dt.isocalendar()[1])
+    
+    tgt_dfs = [fetch_targets_wtd(t_type, w) for w in weeks_in_month]
+    if tgt_dfs:
+        tgt_base = pd.concat(tgt_dfs).groupby("company_name", as_index=False)["target"].sum()
+    else:
+        tgt_base = pd.DataFrame()
 else:
     dc_vendors = ["DC", "Direct Channel", "Basu Business Solutions"]
     if selected_vls:
@@ -660,7 +710,8 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
             if not res.empty: 
                 # Left join enforces SQL data as primary source
                 res = pd.merge(res, t_agg, on=keys_to_merge, how="left")
-            else: res["target"] = 0
+            else:
+                res["target"] = 0
         else: res["target"] = 0
     else:
         if res.empty: res = pd.DataFrame(columns=group_cols + ["cur", "prv", "l4w", "target"])
@@ -755,22 +806,6 @@ def kpi_html(label, value, sub="", pill_html=""):
 def section(title):
     st.markdown(f'<div class="sec-ttl">{title}<div class="sec-ttl-line"></div></div>', unsafe_allow_html=True)
 
-def draw_sortable_header(table_id, col_specs):
-    state_key = f"sort_state_{table_id}"
-    if state_key not in st.session_state:
-        st.session_state[state_key] = (col_specs[0][1], False)
-
-    current_col, current_desc = st.session_state[state_key]
-    grid_cols = st.columns([spec[2] for spec in col_specs])
-    
-    for idx, (label, field, weight) in enumerate(col_specs):
-        icon = " ▴" if current_col == field and not current_desc else (" ▾" if current_col == field else "")
-        if grid_cols[idx].button(f"{label}{icon}", key=f"btn_{table_id}_{str(field)}"):
-            if current_col == field: st.session_state[state_key] = (field, not current_desc)
-            else: st.session_state[state_key] = (field, True)
-            st.rerun()
-    return st.session_state[state_key]
-
 # ── Primary Metric Matrices Engine Calculations ──────────────────────────────
 cur_tot = len(df[(df[ft] >= cs) & (df[ft] <= ce)]) if ft in df.columns else 0
 prv_tot = len(df[(df[ft] >= ps) & (df[ft] <= pe)]) if ft in df.columns else 0
@@ -812,6 +847,52 @@ with tab1:
     with k5: 
         st.markdown(kpi_html("Target Gap (Proj)", f'<span style="color:{g_color}">{fmt(gap_tot)}</span>', pill_html=pill_markup(gap_tot_pct)), unsafe_allow_html=True)
 
+    # --- SPOTLIGHT FEATURE: TOP 5 MOVERS (FT) ---
+    section("🔍 Spotlight: Top 5 Contribution Movers")
+    m_col1, m_col2 = st.columns(2)
+    
+    def generate_movers_html(df, name_col, title):
+        if df.empty: return ""
+        growers = df[df['delta'] > 0].sort_values('delta', ascending=False).head(5)
+        decliners = df[df['delta'] < 0].sort_values('delta', ascending=True).head(5)
+        
+        html = f'<div class="rca-card" style="padding:20px; margin-bottom:0;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
+        html += '<div style="display:flex; gap:20px;">'
+        
+        # Growers Column
+        html += '<div style="flex:1;">'
+        html += '<div style="font-size:10.5px; color:var(--green); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📈 Top 5 Expansion</div>'
+        if not growers.empty:
+            for _, r in growers.iterrows():
+                html += f'<div style="display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-bottom:1px dashed var(--br);"><span style="color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80%; font-weight:500;" title="{r[name_col]}">{r[name_col]}</span><span style="color:var(--green); font-weight:800;">+{int(r["delta"])}</span></div>'
+        else:
+            html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No expansion recorded.</div>'
+        html += '</div>'
+        
+        # Decliners Column
+        html += '<div style="flex:1;">'
+        html += '<div style="font-size:10.5px; color:var(--red); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📉 Top 5 Contraction</div>'
+        if not decliners.empty:
+            for _, r in decliners.iterrows():
+                html += f'<div style="display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-bottom:1px dashed var(--br);"><span style="color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80%; font-weight:500;" title="{r[name_col]}">{r[name_col]}</span><span style="color:var(--red); font-weight:800;">{int(r["delta"])}</span></div>'
+        else:
+            html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No contraction recorded.</div>'
+        html += '</div>'
+        
+        html += '</div></div>'
+        return html
+        
+    with m_col1:
+        st.markdown(generate_movers_html(client_mat, "company_name", "Client Profile Movers"), unsafe_allow_html=True)
+    with m_col2:
+        vl_client_movers = vl_by_client_mat.copy()
+        if not vl_client_movers.empty and "vl_name" in vl_client_movers.columns and "company_name" in vl_client_movers.columns:
+            vl_client_movers["vl_client_label"] = vl_client_movers["vl_name"] + " (" + vl_client_movers["company_name"] + ")"
+            st.markdown(generate_movers_html(vl_client_movers, "vl_client_label", "Vendor Line (VL) Movers"), unsafe_allow_html=True)
+        else:
+            st.markdown(generate_movers_html(vl_master, "vl_name", "Vendor Line (VL) Movers"), unsafe_allow_html=True)
+
+
     if mode == "WTD" and ft in df.columns:
         df_trend = df.copy()
         df_trend['datetime'] = pd.to_datetime(df_trend[ft])
@@ -842,10 +923,10 @@ with tab1:
             section("Client × Week Matrix View (FT Volume & WoW Changes)")
             matrix_src = df_trend.groupby(['company_name', 'Week_Start']).size().unstack(fill_value=0)
             
-            w_cols = st.columns([2, 3, 5])
+            m_cols = st.columns([2, 3, 5])
             matrix_sort_opt = ["Client Profile"] + [f"W/C {w.strftime('%d %b')}" for w in active_weeks]
-            m_sort_col = w_cols[0].selectbox("Sort Matrix By", matrix_sort_opt, index=0, key="mat_sort")
-            m_asc = w_cols[1].radio("Matrix Order", ["Descending", "Ascending"], horizontal=True, key="mat_ord") == "Ascending"
+            m_sort_col = m_cols[0].selectbox("Sort Matrix By", matrix_sort_opt, index=0, key="mat_sort")
+            m_asc = m_cols[1].radio("Matrix Order", ["Descending", "Ascending"], horizontal=True, key="mat_ord") == "Ascending"
 
             if m_sort_col == "Client Profile":
                 matrix_src = matrix_src.sort_index(ascending=m_asc)
@@ -853,9 +934,8 @@ with tab1:
                 sort_date = [w for w in active_weeks if f"W/C {w.strftime('%d %b')}" == m_sort_col][0]
                 if sort_date in matrix_src.columns:
                     matrix_src = matrix_src.sort_values(by=sort_date, ascending=m_asc)
-
+                
             week_w = 80 / len(active_weeks) if active_weeks else 80
-            
             m_tbl = '<div class="table-container"><table class="dash-table"><thead><tr>'
             m_tbl += '<th style="width: 20%;">Client Profile</th>'
             for w in active_weeks:
@@ -1013,6 +1093,10 @@ with tab1:
 # TAB 2: TC CAPACITY VIEW
 # ==============================================================================
 with tab2:
+    all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
+    if exclude_current and len(all_weeks) > 0: all_weeks = all_weeks[1:]
+
+    # TC Global Week Filter
     st.markdown('<div class="inline-filter-container">', unsafe_allow_html=True)
     tc_sel_weeks = st.multiselect("📅 Select Trailing Weeks (Applies globally to all TC Views)", all_weeks, default=all_weeks[:tc_time_filter], key="tc_global_week_filter")
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1022,6 +1106,7 @@ with tab2:
         df_tc_filtered = df_tc_filtered[df_tc_filtered["Week_start"].isin(tc_sel_weeks)]
 
     if mode == "MTD":
+        # Sum target for weeks falling in current month
         tc_month_targets = df_tc_targets[pd.to_datetime(df_tc_targets["Week_start"]).dt.month == cs.month]
         overall_target = tc_month_targets["Overall Addition"].sum() if not tc_month_targets.empty else 0
         
@@ -1033,6 +1118,7 @@ with tab2:
         kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
         kpi_net_additions = cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0
         
+        # Snapshot metrics take values from the most recent week available in the month subset
         if not cur_wk_data.empty:
             latest_week = cur_wk_data["Week_start"].max()
             latest_wk_data = cur_wk_data[cur_wk_data["Week_start"] == latest_week]
@@ -1072,6 +1158,63 @@ with tab2:
             if val > 0: text_color = "var(--green)"
             elif val < 0: text_color = "var(--red)"
         col.markdown(f'<div class="kpi" style="padding:14px;"><div class="kpi-lbl" style="font-size:10px;">{label} <br><span style="color:var(--faint); font-weight:500; font-size:9.5px; text-transform:none;">Time: {tc_display_date}</span></div><div class="kpi-val" style="font-size:22px; color:{text_color}; margin-top:6px;">{val:,}</div></div>', unsafe_allow_html=True)
+
+    # --- SPOTLIGHT FEATURE: TOP 5 MOVERS (TC) ---
+    section("🔍 Spotlight: Top 5 Contribution Movers (TC Capacity)")
+    tc_m_col1, tc_m_col2 = st.columns(2)
+    
+    def generate_tc_movers_html(df, name_col, title):
+        if df.empty or "net_new_additions" not in df.columns: return ""
+        growers = df[df['net_new_additions'] > 0].sort_values('net_new_additions', ascending=False).head(5)
+        decliners = df[df['net_new_additions'] < 0].sort_values('net_new_additions', ascending=True).head(5)
+        
+        html = f'<div class="rca-card" style="padding:20px; margin-bottom:0;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
+        html += '<div style="display:flex; gap:20px;">'
+        
+        # Growers Column
+        html += '<div style="flex:1;">'
+        html += '<div style="font-size:10.5px; color:var(--green); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📈 Top 5 Net Additions</div>'
+        if not growers.empty:
+            for _, r in growers.iterrows():
+                html += f'<div style="display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-bottom:1px dashed var(--br);"><span style="color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80%; font-weight:500;" title="{r[name_col]}">{r[name_col]}</span><span style="color:var(--green); font-weight:800;">+{int(r["net_new_additions"])}</span></div>'
+        else:
+            html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No additions recorded.</div>'
+        html += '</div>'
+        
+        # Decliners Column
+        html += '<div style="flex:1;">'
+        html += '<div style="font-size:10.5px; color:var(--red); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📉 Top 5 Net Churn</div>'
+        if not decliners.empty:
+            for _, r in decliners.iterrows():
+                html += f'<div style="display:flex; justify-content:space-between; font-size:12.5px; padding:6px 0; border-bottom:1px dashed var(--br);"><span style="color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80%; font-weight:500;" title="{r[name_col]}">{r[name_col]}</span><span style="color:var(--red); font-weight:800;">{int(r["net_new_additions"])}</span></div>'
+        else:
+            html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No churn recorded.</div>'
+        html += '</div>'
+        
+        html += '</div></div>'
+        return html
+
+    if not df_tc_filtered.empty:
+        # Prepare spotlight data (respecting MTD logic)
+        spot_data = cur_wk_data if mode == "MTD" else df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
+        
+        if not spot_data.empty:
+            tc_ch = spot_data.groupby("Channel")["net_new_additions"].sum().reset_index().rename(columns={"Channel": "name"})
+            tc_ch["name"] = "[Channel] " + tc_ch["name"].astype(str)
+            
+            tc_reg = spot_data.groupby("region")["net_new_additions"].sum().reset_index().rename(columns={"region": "name"})
+            tc_reg["name"] = "[Region] " + tc_reg["name"].astype(str)
+            
+            tc_coh = spot_data.groupby("cohort")["net_new_additions"].sum().reset_index().rename(columns={"cohort": "name"})
+            tc_coh["name"] = "[Cohort] " + tc_coh["name"].astype(str)
+            
+            tc_combined = pd.concat([tc_ch, tc_reg, tc_coh], ignore_index=True)
+            tc_vl = spot_data.groupby("vl_name")["net_new_additions"].sum().reset_index().rename(columns={"vl_name": "name"})
+            
+            with tc_m_col1:
+                st.markdown(generate_tc_movers_html(tc_combined, "name", "Segment Movers (Channel, Region & Cohort)"), unsafe_allow_html=True)
+            with tc_m_col2:
+                st.markdown(generate_tc_movers_html(tc_vl, "name", "Vendor Line (VL) Movers"), unsafe_allow_html=True)
 
     st.markdown('<div class="sec-ttl" style="margin-top: 2rem;">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
 
