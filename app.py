@@ -59,24 +59,32 @@ html, body, [class*="css"], .stApp {
 [data-testid="stToolbar"] { display: none !important; }
 header { background: transparent !important; }
 
-/* Sidebar Toggle Visibility Fix */
-[data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"] {
+/* Aggressive Sidebar Toggle Visibility Fix */
+button[kind="header"], 
+[data-testid="collapsedControl"], 
+[data-testid="stSidebarCollapsedControl"] {
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: var(--r) !important;
-  color: var(--text) !important;
+  color: #ffffff !important;
   z-index: 999999 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-  margin: 10px !important;
-  transition: all 0.2s ease;
 }
-[data-testid="collapsedControl"]:hover, [data-testid="stSidebarCollapsedControl"]:hover {
+button[kind="header"]:hover, 
+[data-testid="collapsedControl"]:hover, 
+[data-testid="stSidebarCollapsedControl"]:hover {
   background-color: var(--surface3) !important;
   border-color: var(--blue) !important;
 }
-[data-testid="collapsedControl"] svg, [data-testid="stSidebarCollapsedControl"] svg {
-  fill: var(--text) !important;
-  color: var(--text) !important;
+button[kind="header"] svg, 
+[data-testid="collapsedControl"] svg, 
+[data-testid="stSidebarCollapsedControl"] svg,
+header svg {
+  fill: #ffffff !important;
+  color: #ffffff !important;
+  stroke: #ffffff !important;
 }
 
 .block-container {
