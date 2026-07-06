@@ -58,45 +58,39 @@ html, body, [class*="css"], .stApp {
 #MainMenu, footer { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
 
-/* --- BULLETPROOF SIDEBAR TOGGLE FIX --- */
+/* --- FIXED SIDEBAR TOGGLE --- */
 header[data-testid="stHeader"] {
   background-color: transparent !important;
+  pointer-events: none !important;
 }
-
-[data-testid="collapsedControl"], 
-[data-testid="stSidebarCollapsedControl"],
-button[kind="header"] {
+header[data-testid="stHeader"] * {
+  pointer-events: auto !important;
+}
+[data-testid="collapsedControl"],
+[data-testid="stSidebarCollapsedControl"] {
+  position: fixed !important;
+  top: 15px !important;
+  left: 15px !important;
+  z-index: 999999 !important;
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: 8px !important;
-  color: #ffffff !important;
-  z-index: 9999999 !important;
-  position: relative !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-  pointer-events: auto !important;
+  padding: 5px !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 0.25rem !important;
-  margin: 0.5rem !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-  transition: all 0.2s ease !important;
+  pointer-events: auto !important;
 }
-
-[data-testid="collapsedControl"]:hover, 
-[data-testid="stSidebarCollapsedControl"]:hover,
-button[kind="header"]:hover {
+[data-testid="collapsedControl"]:hover,
+[data-testid="stSidebarCollapsedControl"]:hover {
   background-color: var(--surface3) !important;
   border-color: var(--blue) !important;
 }
-
-[data-testid="collapsedControl"] svg, 
-[data-testid="stSidebarCollapsedControl"] svg,
-button[kind="header"] svg {
-  fill: #ffffff !important;
+[data-testid="collapsedControl"] svg,
+[data-testid="stSidebarCollapsedControl"] svg {
   color: #ffffff !important;
-  stroke: #ffffff !important;
+  fill: #ffffff !important;
 }
 
 .block-container {
@@ -652,7 +646,24 @@ selected_vls = st.sidebar.multiselect("Vendor Line Scope (Shared)", shared_vls)
 cs_week_num = cs.isocalendar()[1]
 
 if mode == "MTD":
-    tgt_base = fetch_targets_mtd()
+    dc_vendors = ["DC", "Direct Channel", "Basu Business Solutions"]
+    t_type = "Overall"
+    if selected_vls:
+        if all(v in dc_vendors for v in selected_vls): t_type = "DC"
+        elif all(v not in dc_vendors for v in selected_vls): t_type = "VL"
+        
+    weeks_in_month = set()
+    next_month_date = cs.replace(year=cs.year + 1, month=1, day=1) if cs.month == 12 else cs.replace(month=cs.month + 1, day=1)
+    num_days = (next_month_date - datetime.timedelta(days=1)).day
+    for d in range(1, num_days + 1):
+        dt = datetime.date(cs.year, cs.month, d)
+        weeks_in_month.add(dt.isocalendar()[1])
+    
+    tgt_dfs = [fetch_targets_wtd(t_type, w) for w in weeks_in_month]
+    if tgt_dfs:
+        tgt_base = pd.concat(tgt_dfs).groupby("company_name", as_index=False)["target"].sum()
+    else:
+        tgt_base = pd.DataFrame()
 else:
     dc_vendors = ["DC", "Direct Channel", "Basu Business Solutions"]
     if selected_vls:
@@ -870,7 +881,6 @@ with tab1:
     with m_col1:
         st.markdown(generate_movers_html(client_mat, "company_name", "Client Profile Movers"), unsafe_allow_html=True)
     with m_col2:
-        # Include Client name alongside VL specifically for this FT Spotlight
         vl_client_movers = vl_by_client_mat.copy()
         if not vl_client_movers.empty and "vl_name" in vl_client_movers.columns and "company_name" in vl_client_movers.columns:
             vl_client_movers["vl_client_label"] = vl_client_movers["vl_name"] + " (" + vl_client_movers["company_name"] + ")"
@@ -1091,20 +1101,44 @@ with tab2:
     if tc_sel_weeks: 
         df_tc_filtered = df_tc_filtered[df_tc_filtered["Week_start"].isin(tc_sel_weeks)]
 
-    cur_wk_date = tc_sel_weeks[0] if tc_sel_weeks else (all_weeks[0] if all_weeks else None)
-    cur_wk_data = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
-    
-    target_row = df_tc_targets[df_tc_targets["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
-    overall_target = target_row["Overall Addition"].values[0] if not target_row.empty else 0
+    if mode == "MTD":
+        # Sum target for weeks falling in current month
+        tc_month_targets = df_tc_targets[pd.to_datetime(df_tc_targets["Week_start"]).dt.month == cs.month]
+        overall_target = tc_month_targets["Overall Addition"].sum() if not tc_month_targets.empty else 0
+        
+        cur_wk_data = df_tc_filtered[pd.to_datetime(df_tc_filtered["Week_start"]).dt.month == cs.month]
+        tc_display_date = cs.strftime('%b %Y')
+        
+        kpi_new = cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0
+        kpi_resurrected = cur_wk_data["resurrected_tcs"].sum() if not cur_wk_data.empty else 0
+        kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
+        kpi_net_additions = cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0
+        
+        # Snapshot metrics take values from the most recent week available in the month subset
+        if not cur_wk_data.empty:
+            latest_week = cur_wk_data["Week_start"].max()
+            latest_wk_data = cur_wk_data[cur_wk_data["Week_start"] == latest_week]
+            kpi_active = latest_wk_data["active_tcs"].sum()
+            kpi_existing = latest_wk_data["existing_tcs"].sum()
+        else:
+            kpi_active = 0
+            kpi_existing = 0
+    else:
+        cur_wk_date = tc_sel_weeks[0] if tc_sel_weeks else (all_weeks[0] if all_weeks else None)
+        cur_wk_data = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
+        
+        target_row = df_tc_targets[df_tc_targets["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
+        overall_target = target_row["Overall Addition"].values[0] if not target_row.empty else 0
+        tc_display_date = str(cur_wk_date)
+        
+        kpi_new = cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0
+        kpi_resurrected = cur_wk_data["resurrected_tcs"].sum() if not cur_wk_data.empty else 0
+        kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
+        kpi_active = cur_wk_data["active_tcs"].sum() if not cur_wk_data.empty else 0
+        kpi_existing = cur_wk_data["existing_tcs"].sum() if not cur_wk_data.empty else 0
+        kpi_net_additions = cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0
 
     c1, c2, c3, c4, c5, c6 = st.columns(6)
-    
-    kpi_new = cur_wk_data["new_tcs"].sum() if not cur_wk_data.empty else 0
-    kpi_resurrected = cur_wk_data["resurrected_tcs"].sum() if not cur_wk_data.empty else 0
-    kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
-    kpi_active = cur_wk_data["active_tcs"].sum() if not cur_wk_data.empty else 0
-    kpi_existing = cur_wk_data["existing_tcs"].sum() if not cur_wk_data.empty else 0
-    kpi_net_additions = cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0
 
     metrics = [
         ("Overall Target", overall_target), 
@@ -1119,7 +1153,7 @@ with tab2:
         if label == "Net Additions" and isinstance(val, (int, float)):
             if val > 0: text_color = "var(--green)"
             elif val < 0: text_color = "var(--red)"
-        col.markdown(f'<div class="kpi" style="padding:14px;"><div class="kpi-lbl" style="font-size:10px;">{label} <br><span style="color:var(--faint); font-weight:500; font-size:9.5px; text-transform:none;">Week: {cur_wk_date}</span></div><div class="kpi-val" style="font-size:22px; color:{text_color}; margin-top:6px;">{val:,}</div></div>', unsafe_allow_html=True)
+        col.markdown(f'<div class="kpi" style="padding:14px;"><div class="kpi-lbl" style="font-size:10px;">{label} <br><span style="color:var(--faint); font-weight:500; font-size:9.5px; text-transform:none;">Time: {tc_display_date}</span></div><div class="kpi-val" style="font-size:22px; color:{text_color}; margin-top:6px;">{val:,}</div></div>', unsafe_allow_html=True)
 
     # --- SPOTLIGHT FEATURE: TOP 5 MOVERS (TC) ---
     section("🔍 Spotlight: Top 5 Contribution Movers (TC Capacity)")
@@ -1157,25 +1191,26 @@ with tab2:
         return html
 
     if not df_tc_filtered.empty:
-        # Prepare Card 1: Channel, Region, Cohort combined
-        tc_ch = df_tc_filtered.groupby("Channel")["net_new_additions"].sum().reset_index().rename(columns={"Channel": "name"})
-        tc_ch["name"] = "[Channel] " + tc_ch["name"].astype(str)
+        # Prepare spotlight data (respecting MTD logic)
+        spot_data = cur_wk_data if mode == "MTD" else df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
         
-        tc_reg = df_tc_filtered.groupby("region")["net_new_additions"].sum().reset_index().rename(columns={"region": "name"})
-        tc_reg["name"] = "[Region] " + tc_reg["name"].astype(str)
-        
-        tc_coh = df_tc_filtered.groupby("cohort")["net_new_additions"].sum().reset_index().rename(columns={"cohort": "name"})
-        tc_coh["name"] = "[Cohort] " + tc_coh["name"].astype(str)
-        
-        tc_combined = pd.concat([tc_ch, tc_reg, tc_coh], ignore_index=True)
-        
-        # Prepare Card 2: VLs
-        tc_vl = df_tc_filtered.groupby("vl_name")["net_new_additions"].sum().reset_index().rename(columns={"vl_name": "name"})
-        
-        with tc_m_col1:
-            st.markdown(generate_tc_movers_html(tc_combined, "name", "Segment Movers (Channel, Region & Cohort)"), unsafe_allow_html=True)
-        with tc_m_col2:
-            st.markdown(generate_tc_movers_html(tc_vl, "name", "Vendor Line (VL) Movers"), unsafe_allow_html=True)
+        if not spot_data.empty:
+            tc_ch = spot_data.groupby("Channel")["net_new_additions"].sum().reset_index().rename(columns={"Channel": "name"})
+            tc_ch["name"] = "[Channel] " + tc_ch["name"].astype(str)
+            
+            tc_reg = spot_data.groupby("region")["net_new_additions"].sum().reset_index().rename(columns={"region": "name"})
+            tc_reg["name"] = "[Region] " + tc_reg["name"].astype(str)
+            
+            tc_coh = spot_data.groupby("cohort")["net_new_additions"].sum().reset_index().rename(columns={"cohort": "name"})
+            tc_coh["name"] = "[Cohort] " + tc_coh["name"].astype(str)
+            
+            tc_combined = pd.concat([tc_ch, tc_reg, tc_coh], ignore_index=True)
+            tc_vl = spot_data.groupby("vl_name")["net_new_additions"].sum().reset_index().rename(columns={"vl_name": "name"})
+            
+            with tc_m_col1:
+                st.markdown(generate_tc_movers_html(tc_combined, "name", "Segment Movers (Channel, Region & Cohort)"), unsafe_allow_html=True)
+            with tc_m_col2:
+                st.markdown(generate_tc_movers_html(tc_vl, "name", "Vendor Line (VL) Movers"), unsafe_allow_html=True)
 
     st.markdown('<div class="sec-ttl" style="margin-top: 2rem;">Detailed Analytical Modals (Grouped Pivot Views)</div>', unsafe_allow_html=True)
 
@@ -1379,9 +1414,11 @@ with tab3:
             tc_term = "surpassed" if tc_target_met >= 0 else "underperformed against"
             tc_color = "var(--green)" if tc_target_met >= 0 else "var(--red)"
             
+            spot_data = cur_wk_data if mode == "MTD" else df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
+            
             st.markdown(f"""
             <div class="rca-card">
-              <div class="rca-ttl">Network Capacity Diagnostic ({cur_wk_date})</div>
+              <div class="rca-ttl">Network Capacity Diagnostic ({tc_display_date})</div>
               <div class="rca-body">
                 The most recently filtered capacity cycle resolved with <strong>{kpi_active:,}</strong> Active TCs. 
                 Net Acquisition operations yielded <strong style="color:var(--text)">{kpi_net_additions:,}</strong> Net New additions. 
@@ -1391,8 +1428,8 @@ with tab3:
             </div>""", unsafe_allow_html=True)
             
             # Segment Aggregations for TC
-            ch_agg = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date].groupby("Channel")["net_new_additions"].sum().sort_values(ascending=False) if cur_wk_date else pd.Series()
-            reg_agg = df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date].groupby("region")["net_new_additions"].sum().sort_values(ascending=False) if cur_wk_date else pd.Series()
+            ch_agg = spot_data.groupby("Channel")["net_new_additions"].sum().sort_values(ascending=False) if not spot_data.empty else pd.Series()
+            reg_agg = spot_data.groupby("region")["net_new_additions"].sum().sort_values(ascending=False) if not spot_data.empty else pd.Series()
             
             st.markdown('<div class="rca-card"><div class="rca-ttl">Acquisition Engine Performance</div>', unsafe_allow_html=True)
             if not ch_agg.empty:
