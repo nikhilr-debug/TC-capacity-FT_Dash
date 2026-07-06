@@ -14,6 +14,7 @@ st.set_page_config(
 )
 
 # ── Design tokens & Premium Theme System ──────────────────────────────────────
+# ── Design tokens & Premium Theme System ──────────────────────────────────────
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -55,32 +56,19 @@ html, body, [class*="css"], .stApp {
   line-height: 1.5;
 }
 
+/* Hide clutter but preserve the native sidebar toggle */
 #MainMenu, footer { display: none !important; }
 [data-testid="stToolbar"] { display: none !important; }
+header[data-testid="stHeader"] { background-color: transparent !important; }
 
-/* --- FIXED SIDEBAR TOGGLE --- */
-header[data-testid="stHeader"] {
-  background-color: transparent !important;
-  pointer-events: none !important;
-}
-header[data-testid="stHeader"] * {
-  pointer-events: auto !important;
-}
+/* Style the native expand/collapse toggle so it looks premium without breaking functionality */
 [data-testid="collapsedControl"],
 [data-testid="stSidebarCollapsedControl"] {
-  position: fixed !important;
-  top: 15px !important;
-  left: 15px !important;
-  z-index: 999999 !important;
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: 8px !important;
-  padding: 5px !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-  pointer-events: auto !important;
+  transition: all 0.2s ease;
 }
 [data-testid="collapsedControl"]:hover,
 [data-testid="stSidebarCollapsedControl"]:hover {
@@ -338,20 +326,6 @@ div[data-baseweb="tab-list"] {
 }
 </style>
 """
-st.markdown(CSS, unsafe_allow_html=True)
-
-PLOT_LAYOUT = dict(
-    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-    font=dict(family="Inter", color="#8b8fa8", size=11),
-    margin=dict(l=0, r=0, t=15, b=0), showlegend=False,
-    xaxis=dict(showgrid=False, tickfont=dict(size=10, color="#8b8fa8"), linecolor="rgba(255,255,255,0.07)"),
-    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", zeroline=False),
-    bargap=0.4
-)
-
-BAR_CUR  = "#2f7dd4"
-BAR_PRV  = "#4a4f6a"
-
 # ── Strictly Isolated Data Fetch Pipelines ────────────────────────────────────
 API_KEY = "4aFm2iOoyx8I91svQccdeZr0jmaiUsMFSRinZcmu"
 FT_API_URL = f"https://redash.vahan.link/api/queries/17613/results.json?api_key={API_KEY}"
