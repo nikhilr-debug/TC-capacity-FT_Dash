@@ -57,49 +57,34 @@ html, body, [class*="css"], .stApp {
 
 /* Hide clutter but preserve the native sidebar toggle */
 #MainMenu, footer { display: none !important; }
-/* Removed aggressive stToolbar hiding as it encapsulates the toggle button in newer Streamlit versions */
+[data-testid="stToolbar"] { display: none !important; }
 
-/* --- NATIVE SIDEBAR TOGGLE FIX --- */
-/* Make the header transparent without disabling pointer events so clicks register naturally */
-header[data-testid="stHeader"] {
-  background-color: transparent !important;
+/* Make the header transparent and click-through to prevent invisible blocking shields */
+header[data-testid="stHeader"] { 
+  background-color: transparent !important; 
+  pointer-events: none !important;
 }
 
-/* Pin and style the native expand toggle */
-[data-testid="collapsedControl"], 
+/* Style the native expand/collapse toggle so it looks premium and re-enable clicks */
+[data-testid="collapsedControl"],
 [data-testid="stSidebarCollapsedControl"] {
-  position: fixed !important;
-  top: 15px !important;
-  left: 15px !important;
+  pointer-events: auto !important; 
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: 8px !important;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
   transition: all 0.2s ease !important;
   z-index: 999999 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 8px !important;
-  margin: 0 !important;
-  cursor: pointer !important;
-  visibility: visible !important;
-  opacity: 1 !important;
 }
-
 [data-testid="collapsedControl"]:hover,
 [data-testid="stSidebarCollapsedControl"]:hover {
   background-color: var(--surface3) !important;
   border-color: var(--blue) !important;
-  transform: scale(1.05) !important;
 }
-
 [data-testid="collapsedControl"] svg,
 [data-testid="stSidebarCollapsedControl"] svg {
   color: #ffffff !important;
   fill: #ffffff !important;
-  width: 24px !important;
-  height: 24px !important;
 }
 
 .block-container {
@@ -622,17 +607,25 @@ def get_windows(mode, exclude_current):
         else:
             cs = today - datetime.timedelta(days=dow)
             ce = yesterday
+            if ce < cs: # Protect against Monday boundary logic
+                cs = today - datetime.timedelta(days=dow + 7)
+                ce = cs + datetime.timedelta(days=6)
             ps = cs - datetime.timedelta(weeks=1)
             pe = ce - datetime.timedelta(weeks=1)
     else:
         cs = today.replace(day=1)
         ce = yesterday
-        pm = today.month - 1 or 12
-        py = today.year if today.month > 1 else today.year - 1
-        prev_start = today.replace(year=py, month=pm, day=1)
+        if ce < cs: # Protect against 1st of month boundary logic
+            pm = today.month - 1 or 12
+            py = today.year if today.month > 1 else today.year - 1
+            cs = today.replace(year=py, month=pm, day=1)
+            ce = yesterday
+            
+        pm = cs.month - 1 or 12
+        py = cs.year if cs.month > 1 else cs.year - 1
+        ps = cs.replace(year=py, month=pm, day=1)
         offset = (ce - cs).days
-        ps = prev_start
-        pe = prev_start + datetime.timedelta(days=offset)
+        pe = ps + datetime.timedelta(days=offset)
     return cs, ce, ps, pe
 
 cs, ce, ps, pe = get_windows(mode, exclude_current)
@@ -662,13 +655,12 @@ if mode == "MTD":
         elif all(v not in dc_vendors for v in selected_vls): t_type = "VL"
         
     weeks_in_month = set()
-    next_month_date = cs.replace(year=cs.year + 1, month=1, day=1) if cs.month == 12 else cs.replace(month=cs.month + 1, day=1)
-    num_days = (next_month_date - datetime.timedelta(days=1)).day
+    num_days = (cs.replace(month=cs.month%12+1, day=1) - datetime.timedelta(days=1)).day if cs.month < 12 else 31
     for d in range(1, num_days + 1):
         dt = datetime.date(cs.year, cs.month, d)
         weeks_in_month.add(dt.isocalendar()[1])
     
-    tgt_dfs = [fetch_targets_wtd(t_type, w) for w in weeks_in_month]
+    tgt_dfs = [fetch_targets_wtd(t_type, w) for w in list(weeks_in_month)]
     if tgt_dfs:
         tgt_base = pd.concat(tgt_dfs).groupby("company_name", as_index=False)["target"].sum()
     else:
@@ -728,7 +720,13 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
         
     res["delta"] = res["cur"] - res["prv"]
     res["pct"] = np.where(res["prv"] > 0, (res["delta"] / res["prv"]) * 100, np.nan)
-    res["proj"] = (res["cur"] + (res["l4w"] / 28.0) * remaining_days).round().astype(int)
+    
+    # Intact Projections: Complete periods use Target Baseline, Active periods use Forecast Extrapolation
+    if remaining_days <= 0:
+        res["proj"] = ((res["l4w"] / 28.0) * total_days).round().astype(int)
+    else:
+        res["proj"] = (res["cur"] + (res["l4w"] / 28.0) * remaining_days).round().astype(int)
+        
     res["gap"] = res["proj"] - res["target"]
     res["gap_pct"] = np.where(res["target"] > 0, (res["gap"] / res["target"]) * 100, np.nan)
     
@@ -767,7 +765,9 @@ else:
     total_days = (next_month - datetime.timedelta(days=next_month.day)).day
 
 remaining_days = max(0, total_days - days_elapsed)
-l4w_e = yesterday
+
+# Ensure L4W Baseline accurately calculates up to the start of the current period window
+l4w_e = cs - datetime.timedelta(days=1)
 l4w_s = l4w_e - datetime.timedelta(days=27)
 
 # ── Header Markup Execution ───────────────────────────────────────────────────
@@ -818,7 +818,12 @@ l4w_tot = len(df[(df[ft] >= l4w_s) & (df[ft] <= l4w_e)]) if ft in df.columns els
 
 dlt_tot = cur_tot - prv_tot
 pct_tot = (dlt_tot / prv_tot * 100) if prv_tot > 0 else np.nan
-proj_tot = int(round(cur_tot + (l4w_tot / 28.0) * remaining_days))
+daily_rr = l4w_tot / 28.0
+
+if remaining_days <= 0:
+    proj_tot = int(round(daily_rr * total_days))
+else:
+    proj_tot = int(round(cur_tot + daily_rr * remaining_days))
 
 client_mat = compute_comparison_matrix(df, "company_name", t_df)
 vl_master = compute_comparison_matrix(df, "vl_name", t_df)
@@ -828,7 +833,6 @@ reg_mat = compute_comparison_matrix(df, "region", t_df)
 total_target = int(t_df['target'].sum()) if not t_df.empty else 0
 gap_tot = proj_tot - total_target
 gap_tot_pct = (gap_tot / total_target * 100) if total_target > 0 else np.nan
-daily_rr = l4w_tot / 28.0
 
 # ==============================================================================
 # TAB 1: FT VIEW
@@ -844,7 +848,7 @@ with tab1:
         pills = volume_pill(dlt_tot) + " " + pill_markup(pct_tot)
         st.markdown(kpi_html("Current Period FT", f'<span style="color:{k_color}">{fmt(cur_tot)}</span>', pill_html=pills), unsafe_allow_html=True)
     with k2: 
-        st.markdown(kpi_html("Projected FT", fmt(proj_tot), sub=f"4WMA Pace: {daily_rr:.1f} FT/d"), unsafe_allow_html=True)
+        st.markdown(kpi_html("Projected FT", fmt(proj_tot), sub=f"Entering Pace: {daily_rr:.1f} FT/d"), unsafe_allow_html=True)
     with k3:
         st.markdown(kpi_html("Previous Period FT", fmt(prv_tot), sub="Historical Baseline"), unsafe_allow_html=True)
     with k4: 
@@ -1095,7 +1099,7 @@ with tab1:
 
 
 # ==============================================================================
-# TAB 2: TC CAPACITY VIEW
+# TAB 2: TC Capacity VIEW
 # ==============================================================================
 with tab2:
     all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
@@ -1111,8 +1115,9 @@ with tab2:
         df_tc_filtered = df_tc_filtered[df_tc_filtered["Week_start"].isin(tc_sel_weeks)]
 
     if mode == "MTD":
-        # Sum target for weeks falling in current month
-        tc_month_targets = df_tc_targets[pd.to_datetime(df_tc_targets["Week_start"]).dt.month == cs.month]
+        # Sum targets specifically via explicitly mapping the isolated weeks
+        weeks_in_month_list = list(weeks_in_month) if 'weeks_in_month' in locals() else []
+        tc_month_targets = df_tc_targets[df_tc_targets["Week number"].isin(weeks_in_month_list)]
         overall_target = tc_month_targets["Overall Addition"].sum() if not tc_month_targets.empty else 0
         
         cur_wk_data = df_tc_filtered[pd.to_datetime(df_tc_filtered["Week_start"]).dt.month == cs.month]
@@ -1200,7 +1205,6 @@ with tab2:
         return html
 
     if not df_tc_filtered.empty:
-        # Prepare spotlight data (respecting MTD logic)
         spot_data = cur_wk_data if mode == "MTD" else df_tc_filtered[df_tc_filtered["Week_start"] == cur_wk_date] if cur_wk_date else pd.DataFrame()
         
         if not spot_data.empty:
