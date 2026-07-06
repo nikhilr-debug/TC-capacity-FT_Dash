@@ -57,18 +57,20 @@ html, body, [class*="css"], .stApp {
 
 /* Hide clutter but preserve the native sidebar toggle */
 #MainMenu, footer { display: none !important; }
-[data-testid="stToolbar"] { display: none !important; }
+/* Removed aggressive stToolbar hiding as it encapsulates the toggle button in newer Streamlit versions */
 
 /* --- NATIVE SIDEBAR TOGGLE FIX --- */
-/* 1. Make the header transparent and pass clicks right through the invisible shield */
+/* Make the header transparent without disabling pointer events so clicks register naturally */
 header[data-testid="stHeader"] {
   background-color: transparent !important;
-  pointer-events: none !important;
 }
 
-/* 2. Style the native expand/collapse toggle and re-enable clicks exclusively for it */
-[data-testid="collapsedControl"] {
-  pointer-events: auto !important;
+/* Pin and style the native expand toggle */
+[data-testid="collapsedControl"], 
+[data-testid="stSidebarCollapsedControl"] {
+  position: fixed !important;
+  top: 15px !important;
+  left: 15px !important;
   background-color: var(--surface2) !important;
   border: 1px solid var(--br2) !important;
   border-radius: 8px !important;
@@ -78,19 +80,26 @@ header[data-testid="stHeader"] {
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
-  margin: 14px !important;
-  padding: 5px !important;
+  padding: 8px !important;
+  margin: 0 !important;
+  cursor: pointer !important;
+  visibility: visible !important;
+  opacity: 1 !important;
 }
-[data-testid="collapsedControl"]:hover {
+
+[data-testid="collapsedControl"]:hover,
+[data-testid="stSidebarCollapsedControl"]:hover {
   background-color: var(--surface3) !important;
   border-color: var(--blue) !important;
   transform: scale(1.05) !important;
 }
-[data-testid="collapsedControl"] svg {
+
+[data-testid="collapsedControl"] svg,
+[data-testid="stSidebarCollapsedControl"] svg {
   color: #ffffff !important;
   fill: #ffffff !important;
-  width: 20px !important;
-  height: 20px !important;
+  width: 24px !important;
+  height: 24px !important;
 }
 
 .block-container {
