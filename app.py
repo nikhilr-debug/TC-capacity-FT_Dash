@@ -14,7 +14,6 @@ st.set_page_config(
 )
 
 # ── Design tokens & Premium Theme System ──────────────────────────────────────
-# ── Design tokens & Premium Theme System ──────────────────────────────────────
 CSS = """
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
@@ -326,6 +325,20 @@ div[data-baseweb="tab-list"] {
 }
 </style>
 """
+st.markdown(CSS, unsafe_allow_html=True)
+
+PLOT_LAYOUT = dict(
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    font=dict(family="Inter", color="#8b8fa8", size=11),
+    margin=dict(l=0, r=0, t=15, b=0), showlegend=False,
+    xaxis=dict(showgrid=False, tickfont=dict(size=10, color="#8b8fa8"), linecolor="rgba(255,255,255,0.07)"),
+    yaxis=dict(showgrid=True, gridcolor="rgba(255,255,255,0.05)", zeroline=False),
+    bargap=0.4
+)
+
+BAR_CUR  = "#2f7dd4"
+BAR_PRV  = "#4a4f6a"
+
 # ── Strictly Isolated Data Fetch Pipelines ────────────────────────────────────
 API_KEY = "4aFm2iOoyx8I91svQccdeZr0jmaiUsMFSRinZcmu"
 FT_API_URL = f"https://redash.vahan.link/api/queries/17613/results.json?api_key={API_KEY}"
