@@ -513,7 +513,8 @@ CHANNEL_MAP = {
     "Delhive", "4M Enterprises", "Allz Infra", "Viraj Patil", "Logix Manpower Service", 
     "WorkSetu", "Maruti manangement company", "Manish K", "Hemant", "TrustBridge", 
     "Ravindra Patel", "JKS Sure", "VAAP PLACEMENT SOLUTION", "Aarambh Prime Solutions", 
-    "Tech Talk Connect", "Kumar Consultancy"
+    "Tech Talk Connect", "Kumar Consultancy", "Prime Staffing",
+"Arvind Singh t", "Arvind singh", "Prime Connect Staffing Services"
   ],
   "Existing VL - VGP Identified": [
     "RojiRoty.com", "VMC", "Focus Staffing Services", "AGILE CAREERS", "RAB Enterprises Services pvt.lmt", 
@@ -521,8 +522,8 @@ CHANNEL_MAP = {
     "JKS SURE SERVICES", "Shubhash Rajesh Upadhyay", "Jobistiq manpower private limited", "We ventures", 
     "SNAPFLEET RIDERS PVT LTD", "Manstic", "Sr Fast connect Services", "The Prosperia Group", 
     "Find and Hire Solutions Pvt. Ltd.", "Harsh vashisth", "Devanta enterprises", "TrustBridge Staffing", 
-    "Dedde Technologies Private limited", "Aone venture", "Arvind singh", "virajsinh vijaykumar kale patil enterprises", 
-    "Jobless consultancy", "AALLZ INFRAA", "SR logistics", "Prime Connect Staffing Services"
+    "Dedde Technologies Private limited", "Aone venture", "virajsinh vijaykumar kale patil enterprises", 
+    "Jobless consultancy", "AALLZ INFRAA", "SR logistics"
   ],
   "BPO": ["Basu Business Solutions"],
   "DC": ["Direct Channel"]
