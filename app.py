@@ -590,8 +590,6 @@ df_base = df_ft_raw.copy()
 ft = "first_date_of_work"
 if ft in df_base.columns:
     df_base[ft] = pd.to_datetime(df_base[ft], errors="coerce").dt.date
-    df_base['Month'] = pd.to_datetime(df_base[ft]).dt.strftime('%b %Y')
-    df_base['Week'] = pd.to_datetime(df_base[ft]).apply(lambda x: f"W/C { (x - datetime.timedelta(days=x.weekday())).strftime('%d %b %Y') }" if pd.notna(x) else np.nan)
 
 tc_metrics = ["active_tcs", "existing_tcs", "churned_tcs", "new_tcs", "resurrected_tcs", "net_new_additions"]
 for col in tc_metrics:
@@ -600,11 +598,13 @@ for col in tc_metrics:
 
 if "Week_start" in df_tc_raw.columns:
     df_tc_raw["Week_start"] = pd.to_datetime(df_tc_raw["Week_start"], errors='coerce').dt.date
-    df_tc_raw['Month'] = pd.to_datetime(df_tc_raw['Week_start']).dt.strftime('%b %Y')
-    df_tc_raw['Week'] = pd.to_datetime(df_tc_raw['Week_start']).apply(lambda x: f"W/C {x.strftime('%d %b %Y')}" if pd.notna(x) else np.nan)
 
 if "vl_name" in df_tc_raw.columns:
     df_tc_raw["Channel"] = df_tc_raw.apply(lambda row: classify_channel(row.get("vl_name"), row.get("vl_status", "")), axis=1)
+
+# ── Global Scope Temporal Anchoring ───────────────────────────────────────────
+today = datetime.date.today()
+yesterday = today - datetime.timedelta(days=1)
 
 # ── Sidebar Controls & Filters ────────────────────────────────────────────────
 st.sidebar.markdown("### 🛠️ Data Controls")
@@ -612,58 +612,14 @@ if st.sidebar.button("🔄 Force Refresh Data", type="primary"):
     st.cache_data.clear()
     st.rerun()
 
-st.sidebar.markdown("### 🕒 Time Scope Filters")
-m_opts = set()
-w_opts = set()
-if 'Month' in df_base.columns: m_opts.update(df_base['Month'].dropna().unique())
-if 'Month' in df_tc_raw.columns: m_opts.update(df_tc_raw['Month'].dropna().unique())
-if 'Week' in df_base.columns: w_opts.update(df_base['Week'].dropna().unique())
-if 'Week' in df_tc_raw.columns: w_opts.update(df_tc_raw['Week'].dropna().unique())
-
-month_opts = sorted(list(m_opts), key=lambda x: datetime.datetime.strptime(x, '%b %Y'), reverse=True)
-week_opts = sorted(list(w_opts), key=lambda x: datetime.datetime.strptime(x, 'W/C %d %b %Y'), reverse=True)
-
-sel_months = st.sidebar.multiselect("Month Scope", month_opts)
-sel_weeks = st.sidebar.multiselect("Week Scope", week_opts)
-
-if sel_months:
-    df_base = df_base[df_base['Month'].isin(sel_months)]
-    df_tc_raw = df_tc_raw[df_tc_raw['Month'].isin(sel_months)]
-if sel_weeks:
-    df_base = df_base[df_base['Week'].isin(sel_weeks)]
-    df_tc_raw = df_tc_raw[df_tc_raw['Week'].isin(sel_weeks)]
-
-st.sidebar.markdown("### 🎛️ Global Parameters")
+st.sidebar.markdown("### 🎛️ Parameters")
 mode = st.sidebar.selectbox("FT Comparison Window Mode", ["WTD", "MTD"])
 tc_time_filter = st.sidebar.number_input("TC Capacity N-Weeks Default", min_value=1, max_value=12, value=6)
 exclude_current = st.sidebar.checkbox("Exclude Current Incomplete Week", value=False)
 
-is_custom_time = False
-if sel_months or sel_weeks:
-    is_custom_time = True
-    max_d = []
-    if not df_base.empty and ft in df_base.columns: 
-        max_d.append(pd.to_datetime(df_base[ft]).max().date())
-    if not df_tc_raw.empty and "Week_start" in df_tc_raw.columns: 
-        max_d.append(pd.to_datetime(df_tc_raw['Week_start']).max().date())
-        
-    max_d = [d for d in max_d if pd.notna(d)]
-    if max_d: anchor_date = max(max_d)
-    else: anchor_date = datetime.date.today()
-else:
-    anchor_date = datetime.date.today()
-
-def get_windows(mode, exclude_current, anchor_date, is_custom_time):
-    if is_custom_time:
-        today = anchor_date
-        yesterday = anchor_date
-    else:
-        today = anchor_date
-        yesterday = today - datetime.timedelta(days=1)
-        
-    dow = today.weekday()
-    
+def get_windows(mode, exclude_current):
     if mode == "WTD":
+        dow = today.weekday()
         if exclude_current:
             cs = today - datetime.timedelta(days=dow + 7)
             ce = cs + datetime.timedelta(days=6)
@@ -672,12 +628,12 @@ def get_windows(mode, exclude_current, anchor_date, is_custom_time):
         else:
             cs = today - datetime.timedelta(days=dow)
             ce = yesterday
-            if ce < cs: 
+            if ce < cs: # Protect against Monday boundary logic
                 cs = today - datetime.timedelta(days=dow + 7)
                 ce = cs + datetime.timedelta(days=6)
             ps = cs - datetime.timedelta(weeks=1)
             pe = ce - datetime.timedelta(weeks=1)
-    else:
+    else: # MTD
         if exclude_current:
             this_monday = today - datetime.timedelta(days=dow)
             ce = this_monday - datetime.timedelta(days=1)
@@ -699,7 +655,7 @@ def get_windows(mode, exclude_current, anchor_date, is_custom_time):
         
     return cs, ce, ps, pe
 
-cs, ce, ps, pe = get_windows(mode, exclude_current, anchor_date, is_custom_time)
+cs, ce, ps, pe = get_windows(mode, exclude_current)
 
 st.sidebar.markdown("### 🔍 Placements (FT) Filters")
 
@@ -749,6 +705,7 @@ df = df_base.copy()
 t_df = tgt_base.copy()
 df_tc = df_tc_raw.copy()
 
+# Enforce strict Exact-Group Target Mapping (Left Join Only)
 def compute_comparison_matrix(dataframe, group_key, target_df=None):
     if ft not in dataframe.columns: return pd.DataFrame()
     group_cols = group_key if isinstance(group_key, list) else [group_key]
@@ -776,7 +733,8 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
             
             if not res.empty: 
                 res = pd.merge(res, t_agg, on=keys_to_merge, how="left")
-            else: res["target"] = 0
+            else:
+                res["target"] = 0
         else: res["target"] = 0
     else:
         if res.empty: res = pd.DataFrame(columns=group_cols + ["cur", "prv", "l4w", "target"])
@@ -813,6 +771,7 @@ def filter_target_df(target_df, col_name, selected_items):
         return target_df[target_df[col_name].isin(selected_items_title)]
     return target_df
 
+# FT Data Application
 if selected_clients and "company_name" in df.columns: 
     df = df[df["company_name"].isin(selected_clients)]
     t_df = filter_target_df(t_df, 'company_name', selected_clients)
@@ -825,18 +784,18 @@ if selected_vls:
     if "vl_name" in df_tc.columns: df_tc = df_tc[df_tc["vl_name"].isin(selected_vls)]
 
 days_elapsed = (ce - cs).days + 1
-if mode == "WTD": 
-    total_days = 7
+if mode == "WTD": total_days = 7
 else:
     num_days = (cs.replace(month=cs.month%12+1, day=1) - datetime.timedelta(days=1)).day if cs.month < 12 else 31
     total_days = num_days
 
-if is_custom_time: remaining_days = 0
-else: remaining_days = max(0, total_days - days_elapsed)
+remaining_days = max(0, total_days - days_elapsed)
 
+# Ensure L4W Baseline accurately calculates up to the start of the current period window
 l4w_e = cs - datetime.timedelta(days=1)
 l4w_s = l4w_e - datetime.timedelta(days=27)
 
+# ── Header Markup Execution ───────────────────────────────────────────────────
 st.markdown(f"""
 <div class="dash-header">
   <div>
@@ -846,6 +805,7 @@ st.markdown(f"""
   <div><span class="pill pb" style="font-size:11px;">Current: {cs.strftime('%b %d')} - {ce.strftime('%b %d')} vs Previous: {ps.strftime('%b %d')} - {pe.strftime('%b %d')}</span></div>
 </div>""", unsafe_allow_html=True)
 
+# ── Calculation Helpers ───────────────────────────────────────────────────────
 def fmt(n):
     if pd.isna(n): return "—"
     return f"{int(n):,}" if abs(n) < 1e6 else f"{n/1e6:.1f}M"
@@ -876,6 +836,7 @@ def kpi_html(label, value, sub="", pill_html=""):
 def section(title):
     st.markdown(f'<div class="sec-ttl">{title}<div class="sec-ttl-line"></div></div>', unsafe_allow_html=True)
 
+# ── Primary Metric Matrices Engine Calculations ──────────────────────────────
 cur_tot = len(df[(df[ft] >= cs) & (df[ft] <= ce)]) if ft in df.columns else 0
 prv_tot = len(df[(df[ft] >= ps) & (df[ft] <= pe)]) if ft in df.columns else 0
 l4w_tot = len(df[(df[ft] >= l4w_s) & (df[ft] <= l4w_e)]) if ft in df.columns else 0
@@ -920,6 +881,7 @@ with tab1:
     with k5: 
         st.markdown(kpi_html("Target Gap (Proj)", f'<span style="color:{g_color}">{fmt(gap_tot)}</span>', pill_html=pill_markup(gap_tot_pct)), unsafe_allow_html=True)
 
+    # --- SPOTLIGHT FEATURE: TOP 5 MOVERS (FT) ---
     section("🔍 Spotlight: Top 5 Contribution Movers")
     m_col1, m_col2 = st.columns(2)
     
@@ -937,6 +899,7 @@ with tab1:
         html = f'<div class="rca-card" style="padding:20px; margin-bottom:0; height:100%;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
         html += '<div style="display:flex; gap:20px;">'
         
+        # Growers Column
         html += '<div style="flex:1;">'
         html += '<div style="font-size:10.5px; color:var(--green); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📈 Top 5 Expansion</div>'
         if not growers.empty:
@@ -947,6 +910,7 @@ with tab1:
             html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No expansion recorded.</div>'
         html += '</div>'
         
+        # Decliners Column
         html += '<div style="flex:1;">'
         html += '<div style="font-size:10.5px; color:var(--red); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📉 Top 5 Contraction</div>'
         if not decliners.empty:
@@ -1031,71 +995,6 @@ with tab1:
             ))
             fig_trend.update_layout(**PLOT_LAYOUT, height=220)
             st.plotly_chart(fig_trend, config={"displayModeBar": False}, key="8_week_trend_line_chart")
-            
-            section("Client × Week Matrix View (FT Volume & WoW Changes)")
-            matrix_src = df_trend.groupby(['company_name', 'Week_Start']).size().unstack(fill_value=0)
-            
-            m_cols = st.columns([2, 3, 5])
-            matrix_sort_opt = ["Client Profile"] + [f"W/C {w.strftime('%d %b')}" for w in active_weeks]
-            m_sort_col = m_cols[0].selectbox("Sort Matrix By", matrix_sort_opt, index=0, key="mat_sort")
-            m_asc = m_cols[1].radio("Matrix Order", ["Descending", "Ascending"], horizontal=True, key="mat_ord") == "Ascending"
-
-            if m_sort_col == "Client Profile":
-                matrix_src = matrix_src.sort_index(ascending=m_asc)
-            else:
-                sort_date = [w for w in active_weeks if f"W/C {w.strftime('%d %b')}" == m_sort_col][0]
-                if sort_date in matrix_src.columns:
-                    matrix_src = matrix_src.sort_values(by=sort_date, ascending=m_asc)
-                
-            week_w = 80 / len(active_weeks) if active_weeks else 80
-            m_tbl = '<div class="table-container"><table class="dash-table"><thead><tr>'
-            m_tbl += '<th style="width: 20%;">Client Profile</th>'
-            for w in active_weeks:
-                m_tbl += f'<th class="n" style="width: {week_w}%;">W/C {w.strftime("%d %b")}</th>'
-            m_tbl += '</tr></thead><tbody>'
-
-            for client_name, row in matrix_src.iterrows():
-                m_tbl += f'<tr><td style="width: 20%; font-weight:600;">{client_name}</td>'
-                for idx, week_monday in enumerate(active_weeks):
-                    val = row.get(week_monday, 0)
-                    if idx == 0:
-                        wow_str = '<span style="font-size:10px; color:var(--muted);">Base</span>'
-                        val_color = "var(--text)"
-                    else:
-                        prev_week_monday = active_weeks[idx - 1]
-                        prev_val = row.get(prev_week_monday, 0)
-                        if prev_val > 0:
-                            wow_pct = ((val - prev_val) / prev_val) * 100
-                            val_color = "var(--green)" if wow_pct > 0 else ("var(--red)" if wow_pct < 0 else "var(--text)")
-                            wow_str = f'<span style="font-size:10px; color:{val_color}; font-weight:700;">{wow_pct:+.1f}%</span>'
-                        else:
-                            val_color = "var(--green)" if val > 0 else "var(--text)"
-                            wow_str = f'<span style="font-size:10px; color:{val_color}; font-weight:700;">+100%</span>' if val > 0 else '<span style="font-size:10px; color:var(--muted);">0%</span>'
-                    m_tbl += f'<td class="n" style="width: {week_w}%;"><div style="font-weight:600; color:{val_color};">{val:,}</div><div>{wow_str}</div></td>'
-                m_tbl += '</tr>'
-            m_tbl += '</tbody></table></div>'
-            st.markdown(m_tbl, unsafe_allow_html=True)
-
-    elif mode == "MTD" and ft in df.columns:
-        section("Month-To-Date (MTD) Day-by-Day Run-Rate Tracking")
-        sub_cur = df[(df[ft] >= cs) & (df[ft] <= ce)]
-        sub_prv = df[(df[ft] >= ps) & (df[ft] <= pe)]
-        
-        cur_days = sub_cur.groupby(sub_cur[ft].apply(lambda x: x.day)).size().rename("Current Month")
-        prv_days = sub_prv.groupby(sub_prv[ft].apply(lambda x: x.day)).size().rename("Previous Month")
-        
-        mtd_trend = pd.concat([cur_days, prv_days], axis=1).fillna(0).reset_index()
-        mtd_trend.columns = ["Day of Month", "Current Month", "Previous Month"]
-        
-        fig_mtd = go.Figure()
-        fig_mtd.add_trace(go.Scatter(x=mtd_trend["Day of Month"], y=mtd_trend["Previous Month"], name="Previous Month Baseline", mode='lines', line=dict(color=BAR_PRV, width=2, dash='dot')))
-        fig_mtd.add_trace(go.Scatter(x=mtd_trend["Day of Month"], y=mtd_trend["Current Month"], name="Current Month Runrate", mode='lines+markers', line=dict(color=BAR_CUR, width=3)))
-        
-        mtd_layout = dict(**PLOT_LAYOUT)
-        mtd_layout["height"] = 240
-        mtd_layout["showlegend"] = True
-        fig_mtd.update_layout(**mtd_layout)
-        st.plotly_chart(fig_mtd, config={"displayModeBar": False}, key="mtd_day_runrate_chart")
 
     if not client_mat.empty:
         section("All Clients Performance Analysis")
@@ -1239,11 +1138,14 @@ with tab1:
 with tab2:
     all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
     
-    if exclude_current and len(all_weeks) > 0: 
-        all_weeks = all_weeks[1:]
-
     # TC Global Week Filter
     st.markdown('<div class="inline-filter-container">', unsafe_allow_html=True)
+    
+    # ── Smart Current Week Exclusion Check ──
+    this_monday = datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday())
+    if exclude_current:
+        all_weeks = [w for w in all_weeks if w < this_monday]
+        
     tc_sel_weeks = st.multiselect("📅 Select Trailing Weeks (Applies globally to all TC Views)", all_weeks, default=all_weeks[:tc_time_filter], key="tc_global_week_filter")
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -1304,7 +1206,6 @@ with tab2:
             elif val < 0: text_color = "var(--red)"
         col.markdown(f'<div class="kpi" style="padding:14px;"><div class="kpi-lbl" style="font-size:10px;">{label} <br><span style="color:var(--faint); font-weight:500; font-size:9.5px; text-transform:none;">Time: {tc_display_date}</span></div><div class="kpi-val" style="font-size:22px; color:{text_color}; margin-top:6px;">{val:,}</div></div>', unsafe_allow_html=True)
 
-    # --- SPOTLIGHT FEATURE: TOP 5 MOVERS (TC) ---
     section("🔍 Spotlight: Top 5 Contribution Movers (TC Capacity)")
     tc_m_col1, tc_m_col2 = st.columns(2)
     
@@ -1322,7 +1223,6 @@ with tab2:
         html = f'<div class="rca-card" style="padding:20px; margin-bottom:0; height:100%;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
         html += '<div style="display:flex; gap:20px;">'
         
-        # Growers Column
         html += '<div style="flex:1;">'
         html += '<div style="font-size:10.5px; color:var(--green); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📈 Top 5 Net Additions</div>'
         if not growers.empty:
@@ -1333,7 +1233,6 @@ with tab2:
             html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No additions recorded.</div>'
         html += '</div>'
         
-        # Decliners Column
         html += '<div style="flex:1;">'
         html += '<div style="font-size:10.5px; color:var(--red); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📉 Top 5 Net Churn</div>'
         if not decliners.empty:
@@ -1513,7 +1412,6 @@ with tab2:
             vl_totals = tmp_tc.groupby("vl_name")[tc_sort_col].sum().reset_index()
             top_vls = vl_totals.sort_values(by=tc_sort_col, ascending=is_tc_asc).head(tc_n_vls)["vl_name"].tolist()
             
-            # Pre-filter to satisfy Pandas 4.0 Categorical data constraints
             tmp_tc = tmp_tc[tmp_tc["vl_name"].isin(top_vls)]
             tmp_tc["vl_name"] = pd.Categorical(tmp_tc["vl_name"], categories=top_vls, ordered=True)
             
