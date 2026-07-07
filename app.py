@@ -514,7 +514,7 @@ CHANNEL_MAP = {
     "WorkSetu", "Maruti manangement company", "Manish K", "Hemant", "TrustBridge", 
     "Ravindra Patel", "JKS Sure", "VAAP PLACEMENT SOLUTION", "Aarambh Prime Solutions", 
     "Tech Talk Connect", "Kumar Consultancy", "Prime Staffing",
-"Arvind Singh t", "Arvind singh", "Prime Connect Staffing Services"
+"Arvind Singh t", "Arvind singh", "Prime Connect Staffing Services", "prime connect staffing services","Arvind singh"
   ],
   "Existing VL - VGP Identified": [
     "RojiRoty.com", "VMC", "Focus Staffing Services", "AGILE CAREERS", "RAB Enterprises Services pvt.lmt", 
