@@ -60,6 +60,7 @@ html, body, [class*="css"], .stApp {
 [data-testid="stToolbar"] { display: none !important; }
 
 /* --- NATIVE SIDEBAR TOGGLE FIX --- */
+/* Make the header transparent without disabling pointer events so clicks register naturally */
 header[data-testid="stHeader"] {
   background-color: transparent !important;
 }
@@ -605,7 +606,7 @@ if "Week_start" in df_tc_raw.columns:
 if "vl_name" in df_tc_raw.columns:
     df_tc_raw["Channel"] = df_tc_raw.apply(lambda row: classify_channel(row.get("vl_name"), row.get("vl_status", "")), axis=1)
 
-# ── Sidebar Controls & Filters (Global & FT Focused) ──────────────────────────
+# ── Sidebar Controls & Filters ────────────────────────────────────────────────
 st.sidebar.markdown("### 🛠️ Data Controls")
 if st.sidebar.button("🔄 Force Refresh Data", type="primary"):
     st.cache_data.clear()
@@ -637,7 +638,6 @@ mode = st.sidebar.selectbox("FT Comparison Window Mode", ["WTD", "MTD"])
 tc_time_filter = st.sidebar.number_input("TC Capacity N-Weeks Default", min_value=1, max_value=12, value=6)
 exclude_current = st.sidebar.checkbox("Exclude Current Incomplete Week", value=False)
 
-# Dynamic Time Machine Logic based on Time Scope Filters
 is_custom_time = False
 if sel_months or sel_weeks:
     is_custom_time = True
@@ -672,12 +672,12 @@ def get_windows(mode, exclude_current, anchor_date, is_custom_time):
         else:
             cs = today - datetime.timedelta(days=dow)
             ce = yesterday
-            if ce < cs: # Protect against Monday boundary logic
+            if ce < cs: 
                 cs = today - datetime.timedelta(days=dow + 7)
                 ce = cs + datetime.timedelta(days=6)
             ps = cs - datetime.timedelta(weeks=1)
             pe = ce - datetime.timedelta(weeks=1)
-    else: # MTD
+    else:
         if exclude_current:
             this_monday = today - datetime.timedelta(days=dow)
             ce = this_monday - datetime.timedelta(days=1)
@@ -749,7 +749,6 @@ df = df_base.copy()
 t_df = tgt_base.copy()
 df_tc = df_tc_raw.copy()
 
-# Enforce strict Exact-Group Target Mapping (Left Join Only)
 def compute_comparison_matrix(dataframe, group_key, target_df=None):
     if ft not in dataframe.columns: return pd.DataFrame()
     group_cols = group_key if isinstance(group_key, list) else [group_key]
@@ -776,10 +775,8 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
             t_agg = t_df_temp.groupby(keys_to_merge)['target'].sum().reset_index()
             
             if not res.empty: 
-                # Left join enforces SQL data as primary source
                 res = pd.merge(res, t_agg, on=keys_to_merge, how="left")
-            else:
-                res["target"] = 0
+            else: res["target"] = 0
         else: res["target"] = 0
     else:
         if res.empty: res = pd.DataFrame(columns=group_cols + ["cur", "prv", "l4w", "target"])
@@ -816,7 +813,6 @@ def filter_target_df(target_df, col_name, selected_items):
         return target_df[target_df[col_name].isin(selected_items_title)]
     return target_df
 
-# FT Data Application
 if selected_clients and "company_name" in df.columns: 
     df = df[df["company_name"].isin(selected_clients)]
     t_df = filter_target_df(t_df, 'company_name', selected_clients)
@@ -838,11 +834,9 @@ else:
 if is_custom_time: remaining_days = 0
 else: remaining_days = max(0, total_days - days_elapsed)
 
-# Ensure L4W Baseline accurately calculates up to the start of the current period window
 l4w_e = cs - datetime.timedelta(days=1)
 l4w_s = l4w_e - datetime.timedelta(days=27)
 
-# ── Header Markup Execution ───────────────────────────────────────────────────
 st.markdown(f"""
 <div class="dash-header">
   <div>
@@ -852,7 +846,6 @@ st.markdown(f"""
   <div><span class="pill pb" style="font-size:11px;">Current: {cs.strftime('%b %d')} - {ce.strftime('%b %d')} vs Previous: {ps.strftime('%b %d')} - {pe.strftime('%b %d')}</span></div>
 </div>""", unsafe_allow_html=True)
 
-# ── Calculation Helpers ───────────────────────────────────────────────────────
 def fmt(n):
     if pd.isna(n): return "—"
     return f"{int(n):,}" if abs(n) < 1e6 else f"{n/1e6:.1f}M"
@@ -883,7 +876,6 @@ def kpi_html(label, value, sub="", pill_html=""):
 def section(title):
     st.markdown(f'<div class="sec-ttl">{title}<div class="sec-ttl-line"></div></div>', unsafe_allow_html=True)
 
-# ── Primary Metric Matrices Engine Calculations ──────────────────────────────
 cur_tot = len(df[(df[ft] >= cs) & (df[ft] <= ce)]) if ft in df.columns else 0
 prv_tot = len(df[(df[ft] >= ps) & (df[ft] <= pe)]) if ft in df.columns else 0
 l4w_tot = len(df[(df[ft] >= l4w_s) & (df[ft] <= l4w_e)]) if ft in df.columns else 0
@@ -928,7 +920,6 @@ with tab1:
     with k5: 
         st.markdown(kpi_html("Target Gap (Proj)", f'<span style="color:{g_color}">{fmt(gap_tot)}</span>', pill_html=pill_markup(gap_tot_pct)), unsafe_allow_html=True)
 
-    # --- SPOTLIGHT FEATURE: TOP 5 MOVERS (FT) ---
     section("🔍 Spotlight: Top 5 Contribution Movers")
     m_col1, m_col2 = st.columns(2)
     
@@ -946,7 +937,6 @@ with tab1:
         html = f'<div class="rca-card" style="padding:20px; margin-bottom:0; height:100%;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
         html += '<div style="display:flex; gap:20px;">'
         
-        # Growers Column
         html += '<div style="flex:1;">'
         html += '<div style="font-size:10.5px; color:var(--green); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📈 Top 5 Expansion</div>'
         if not growers.empty:
@@ -957,7 +947,6 @@ with tab1:
             html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No expansion recorded.</div>'
         html += '</div>'
         
-        # Decliners Column
         html += '<div style="flex:1;">'
         html += '<div style="font-size:10.5px; color:var(--red); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📉 Top 5 Contraction</div>'
         if not decliners.empty:
@@ -1022,7 +1011,6 @@ with tab1:
         df_trend['datetime'] = pd.to_datetime(df_trend[ft])
         df_trend['Week_Start'] = df_trend['datetime'].dt.to_period('W').dt.start_time.dt.date
         
-        # Trend chart anchored cleanly to reference date
         this_week_monday = ce - datetime.timedelta(days=ce.weekday())
         df_trend = df_trend[df_trend['Week_Start'] <= this_week_monday]
             
@@ -1140,6 +1128,38 @@ with tab1:
             </tr>"""
         t_html += "</tbody></table></div>"
         st.markdown(t_html, unsafe_allow_html=True)
+        
+    if not reg_mat.empty:
+        section("Overall Regional Performance Analysis")
+        
+        r_cols = st.columns([2, 3, 5])
+        r_sort_opt = ["Cur", "Proj", "Prv", "Target", "Gap", "Δ Vol", "Δ %", "Region", "Contribution"]
+        r_sort = r_cols[0].selectbox("Sort Table By", r_sort_opt, index=0, key="reg_main_sort")
+        r_asc = r_cols[1].radio("Table Order", ["Descending", "Ascending"], horizontal=True, key="reg_main_ord") == "Ascending"
+
+        sort_map_reg = {"Region": "region", "Cur": "cur", "Proj": "proj", "Prv": "prv", "Target": "target", "Gap": "gap", "Δ Vol": "delta", "Δ %": "pct", "Contribution": "contr"}
+        reg_mat = reg_mat.sort_values(sort_map_reg[r_sort], ascending=r_asc)
+
+        t_html = '<div class="table-container"><table class="dash-table"><thead><tr>'
+        t_html += '<th style="width:20%;">Region</th><th class="n" style="width:10%;">Cur</th><th class="n" style="width:10%;">Proj</th><th class="n" style="width:10%;">Prv</th><th class="n" style="width:10%;">Target</th><th class="n" style="width:10%;">Gap</th><th class="n" style="width:10%;">Δ Vol</th><th class="n" style="width:10%;">Δ %</th><th class="n" style="width:10%;">Contribution</th>'
+        t_html += '</tr></thead><tbody>'
+        
+        for _, r in reg_mat.iterrows():
+            c_color = "var(--green)" if r['delta'] >= 0 else "var(--red)"
+            g_color = "var(--green)" if r['gap'] >= 0 else "var(--red)"
+            t_html += f"""<tr>
+                <td style="width:20%; font-weight:600;">{r['region']}</td>
+                <td class="n" style="width:10%; font-weight:600; color:{c_color};">{fmt(r['cur'])}</td>
+                <td class="n" style="width:10%; font-weight:700; color:var(--blue);">{fmt(r['proj'])}</td>
+                <td class="n" style="width:10%; color:var(--muted);">{fmt(r['prv'])}</td>
+                <td class="n" style="width:10%; color:var(--muted);">{fmt(r['target'])}</td>
+                <td class="n" style="width:10%; font-weight:600; color:{g_color};">{fmt(r['gap'])}<br><div style="margin-top:4px;">{pill_markup(r['gap_pct'])}</div></td>
+                <td class="n" style="width:10%;">{volume_pill(r['delta'])}</td>
+                <td class="n" style="width:10%;">{pill_markup(r['pct'])}</td>
+                <td class="n" style="width:10%;">{contr_markup(r['delta'], r['contr'])}</td>
+            </tr>"""
+        t_html += "</tbody></table></div>"
+        st.markdown(t_html, unsafe_allow_html=True)
 
     if not vl_by_client_mat.empty:
         section("Dynamic Vendor Line (VL) Analytics Tracker (By Client)")
@@ -1184,8 +1204,8 @@ with tab1:
         
         with st.expander("📍 Expand for Regional Execution View"):
             rc_cols = st.columns([2, 3, 5])
-            r_sort = rc_cols[0].selectbox("Sort Priority By", ["Cur Volume", "Δ Vol (Delta)", "Gap vs Target", "Region"], index=1, key="reg_sort")
-            r_asc = rc_cols[1].radio("Trend View", ["Descending", "Ascending"], horizontal=True, key="reg_ord") == "Ascending"
+            r_sort = rc_cols[0].selectbox("Sort Priority By", ["Cur Volume", "Δ Vol (Delta)", "Gap vs Target", "Region"], index=1, key="reg_client_sort")
+            r_asc = rc_cols[1].radio("Trend View", ["Descending", "Ascending"], horizontal=True, key="reg_client_ord") == "Ascending"
 
             reg_client_mat = compute_comparison_matrix(df, ["region", "company_name"], t_df)
             r_map = {"Cur Volume": "cur", "Δ Vol (Delta)": "delta", "Gap vs Target": "gap", "Region": "region"}
@@ -1219,6 +1239,9 @@ with tab1:
 with tab2:
     all_weeks = sorted(df_tc_raw["Week_start"].dropna().unique(), reverse=True) if "Week_start" in df_tc_raw.columns else []
     
+    if exclude_current and len(all_weeks) > 0: 
+        all_weeks = all_weeks[1:]
+
     # TC Global Week Filter
     st.markdown('<div class="inline-filter-container">', unsafe_allow_html=True)
     tc_sel_weeks = st.multiselect("📅 Select Trailing Weeks (Applies globally to all TC Views)", all_weeks, default=all_weeks[:tc_time_filter], key="tc_global_week_filter")
@@ -1229,7 +1252,6 @@ with tab2:
         df_tc_filtered = df_tc_filtered[df_tc_filtered["Week_start"].isin(tc_sel_weeks)]
 
     if mode == "MTD":
-        # Dynamic Target Aggregation: Safely sum targets only for the weeks matching the MTD view
         month_target_weeks = [w for w in all_weeks if w.month == cs.month and w.year == cs.year]
         tc_month_targets = df_tc_targets[df_tc_targets["Week_start"].isin(month_target_weeks)]
         overall_target = tc_month_targets["Overall Addition"].sum() if not tc_month_targets.empty else 0
@@ -1242,7 +1264,6 @@ with tab2:
         kpi_churned = cur_wk_data["churned_tcs"].sum() if not cur_wk_data.empty else 0
         kpi_net_additions = cur_wk_data["net_new_additions"].sum() if not cur_wk_data.empty else 0
         
-        # Snapshot metrics take values from the most recent week available in the month subset
         if not cur_wk_data.empty:
             latest_week = cur_wk_data["Week_start"].max()
             latest_wk_data = cur_wk_data[cur_wk_data["Week_start"] == latest_week]
