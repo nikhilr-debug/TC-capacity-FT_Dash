@@ -241,33 +241,15 @@ div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
   padding: 12px 16px;
   border-bottom: 1px solid var(--br);
   color: var(--text);
-  vertical-align: middle;
   white-space: nowrap;
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.dash-table tbody tr {
-  transition: background-color 0.2s ease;
-}
-.dash-table tbody tr:hover td {
-  background: rgba(255, 255, 255, 0.04);
-}
-.dash-table tbody tr:last-child td {
-  border-bottom: none;
-}
+.dash-table tr:last-child td { border-bottom: none; }
+.dash-table tr:hover td { background: rgba(255, 255, 255, 0.04); }
 .n { text-align: right; font-variant-numeric: tabular-nums; }
 .td-muted { color: var(--muted); }
-
-/* Control Panels above Tables */
-.controls-row {
-  background: var(--surface);
-  border: 1px solid var(--br2);
-  border-radius: var(--rl);
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
 
 /* Tabs Styling */
 button[data-baseweb="tab"] {
@@ -336,7 +318,6 @@ div[data-baseweb="tab-list"] {
 .dot-r { background: var(--red); box-shadow: 0 0 8px rgba(255, 107, 107, 0.4); }
 .dot-b { background: var(--blue); box-shadow: 0 0 8px rgba(124, 185, 248, 0.4); }
 
-/* Inline Filter Container */
 .inline-filter-container {
     background: var(--surface);
     padding: 12px 20px;
@@ -344,6 +325,31 @@ div[data-baseweb="tab-list"] {
     border: 1px solid var(--br2);
     margin-bottom: 16px;
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Native HTML Expander for VL Drops */
+details.vl-expander summary {
+  list-style: none;
+}
+details.vl-expander summary::-webkit-details-marker {
+  display: none;
+}
+.exp-icon {
+  display: inline-block;
+  width: 16px;
+  font-weight: 800;
+  color: var(--muted);
+  text-align: center;
+  margin-right: 4px;
+}
+details.vl-expander:not([open]) summary .exp-icon::before {
+  content: '+';
+}
+details.vl-expander[open] summary .exp-icon::before {
+  content: '−';
+}
+details.vl-expander[open] summary {
+  color: var(--blue) !important;
 }
 </style>
 """
@@ -444,7 +450,7 @@ def fetch_targets_wtd(target_type, week_num):
         'Bigbasket': [0, 43, 43, 64, 144, 186, 333, 375, 508, 700, 918, 1000, 1200, 1383, 1463],
         'Amazon': [0, 9, 9, 13, 40, 54, 90, 104, 142, 197, 273, 320, 370, 441, 458],
         'XB': [28, 37, 37, 50, 67, 80, 128, 146, 205, 254, 331, 388, 473, 539, 586],
-        'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
+        'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
         'Small Clients': [0, 0, 0, 20, 50, 100, 150, 200, 300, 400, 500, 550, 600, 600, 600]
     }
     vl_dict = {
@@ -741,9 +747,9 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
     res["delta"] = res["cur"] - res["prv"]
     res["pct"] = np.where(res["prv"] > 0, (res["delta"] / res["prv"]) * 100, np.nan)
     
-    # Intact Projections: Complete periods use Target Baseline, Active periods use Forecast Extrapolation
+    # Intact Projections: Complete periods use actuals, Active periods use Forecast Extrapolation
     if remaining_days <= 0:
-        res["proj"] = ((res["l4w"] / 28.0) * total_days).round().astype(int)
+        res["proj"] = res["cur"]
     else:
         res["proj"] = (res["cur"] + (res["l4w"] / 28.0) * remaining_days).round().astype(int)
         
@@ -841,7 +847,7 @@ pct_tot = (dlt_tot / prv_tot * 100) if prv_tot > 0 else np.nan
 daily_rr = l4w_tot / 28.0
 
 if remaining_days <= 0:
-    proj_tot = int(round(daily_rr * total_days))
+    proj_tot = cur_tot
 else:
     proj_tot = int(round(cur_tot + daily_rr * remaining_days))
 
@@ -885,7 +891,7 @@ with tab1:
         growers = df[df['delta'] > 0].sort_values('delta', ascending=False).head(5)
         decliners = df[df['delta'] < 0].sort_values('delta', ascending=True).head(5)
         
-        html = f'<div class="rca-card" style="padding:20px; margin-bottom:0;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
+        html = f'<div class="rca-card" style="padding:20px; margin-bottom:0; height:100%;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
         html += '<div style="display:flex; gap:20px;">'
         
         # Growers Column
@@ -911,16 +917,47 @@ with tab1:
         html += '</div></div>'
         return html
         
+    def generate_vl_movers_html(vl_df, vl_client_df, title="Vendor Line (VL) Drop Spotlight"):
+        if vl_df.empty: return ""
+        decliners = vl_df[vl_df['delta'] < 0].sort_values('delta', ascending=True).head(5)
+
+        html = f'<div class="rca-card" style="padding:20px; margin-bottom:0; height:100%;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
+        html += '<div style="font-size:10.5px; color:var(--red); font-weight:800; text-transform:uppercase; margin-bottom:8px; border-bottom:1px solid var(--br2); padding-bottom:6px;">📉 Top 5 Overall Contractions</div>'
+
+        if not decliners.empty:
+            for _, r in decliners.iterrows():
+                vl_name = r["vl_name"]
+                vl_delta = int(r["delta"])
+
+                c_breakdown = vl_client_df[(vl_client_df["vl_name"] == vl_name) & (vl_client_df["delta"] != 0)].sort_values('delta', ascending=True)
+
+                html += '<details class="vl-expander" style="margin-bottom: 8px; border-bottom: 1px dashed var(--br); padding-bottom: 6px;">'
+                html += '<summary style="cursor: pointer; display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; font-weight: 600; color: var(--text); outline: none;">'
+                html += f'<div><span class="exp-icon"></span><span title="{vl_name}" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:200px; display:inline-block; vertical-align:bottom;">{vl_name}</span></div>'
+                html += f'<span style="color:var(--red); font-weight:800;">{vl_delta}</span>'
+                html += '</summary>'
+                
+                html += '<div style="padding-top: 8px; padding-left: 20px; font-size: 11.5px; color: var(--muted);">'
+                if not c_breakdown.empty:
+                    for _, cr in c_breakdown.iterrows():
+                        c_name = cr["company_name"]
+                        c_delta = int(cr["delta"])
+                        c_col = "var(--green)" if c_delta > 0 else "var(--red)"
+                        c_sign = "+" if c_delta > 0 else ""
+                        html += f'<div style="display:flex; justify-content:space-between; margin-bottom: 4px;"><span style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:80%;" title="{c_name}">{c_name}</span><span style="color:{c_col}; font-weight:600;">{c_sign}{c_delta}</span></div>'
+                else:
+                    html += '<div style="margin-bottom: 4px;">No client-level variance data available.</div>'
+                html += '</div></details>'
+        else:
+            html += '<div style="font-size:12px; color:var(--muted); padding:8px 0;">No contraction recorded.</div>'
+
+        html += '</div>'
+        return html
+
     with m_col1:
         st.markdown(generate_movers_html(client_mat, "company_name", "Client Profile Movers"), unsafe_allow_html=True)
     with m_col2:
-        vl_client_movers = vl_by_client_mat.copy()
-        if not vl_client_movers.empty and "vl_name" in vl_client_movers.columns and "company_name" in vl_client_movers.columns:
-            vl_client_movers["vl_client_label"] = vl_client_movers["vl_name"] + " (" + vl_client_movers["company_name"] + ")"
-            st.markdown(generate_movers_html(vl_client_movers, "vl_client_label", "Vendor Line (VL) Movers"), unsafe_allow_html=True)
-        else:
-            st.markdown(generate_movers_html(vl_master, "vl_name", "Vendor Line (VL) Movers"), unsafe_allow_html=True)
-
+        st.markdown(generate_vl_movers_html(vl_master, vl_by_client_mat, "Vendor Line (VL) Drop Spotlight"), unsafe_allow_html=True)
 
     if mode == "WTD" and ft in df.columns:
         df_trend = df.copy()
@@ -1200,7 +1237,7 @@ with tab2:
         growers = df[df['net_new_additions'] > 0].sort_values('net_new_additions', ascending=False).head(5)
         decliners = df[df['net_new_additions'] < 0].sort_values('net_new_additions', ascending=True).head(5)
         
-        html = f'<div class="rca-card" style="padding:20px; margin-bottom:0;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
+        html = f'<div class="rca-card" style="padding:20px; margin-bottom:0; height:100%;"><div class="rca-ttl" style="font-size:13px; border-bottom:none; padding-bottom:4px; margin-bottom:12px;">{title}</div>'
         html += '<div style="display:flex; gap:20px;">'
         
         # Growers Column
@@ -1336,7 +1373,7 @@ with tab2:
 
         df_channel = get_standard_table(df_tc_ch, "Channel")
         if not df_channel.empty:
-            st.dataframe(style_tc_dataframe(df_channel, "Channel"), width="stretch", hide_index=True)
+            st.dataframe(style_tc_dataframe(df_channel, "Channel"), use_container_width=True, hide_index=True)
             
     with st.expander("📍 Region View Drill-down"):
         region_opts = sorted(df_tc_filtered["region"].dropna().unique()) if "region" in df_tc_filtered.columns else []
@@ -1345,7 +1382,7 @@ with tab2:
 
         df_region = get_standard_table(df_tc_reg, "region")
         if not df_region.empty:
-            st.dataframe(style_tc_dataframe(df_region, "region"), width="stretch", hide_index=True)
+            st.dataframe(style_tc_dataframe(df_region, "region"), use_container_width=True, hide_index=True)
             
     with st.expander("👥 Cohort View Drill-down"):
         cohort_opts = sorted(df_tc_filtered["cohort"].dropna().unique()) if "cohort" in df_tc_filtered.columns else []
@@ -1354,7 +1391,7 @@ with tab2:
 
         df_cohort = get_standard_table(df_tc_coh, "cohort")
         if not df_cohort.empty:
-            st.dataframe(style_tc_dataframe(df_cohort, "cohort"), width="stretch", hide_index=True)
+            st.dataframe(style_tc_dataframe(df_cohort, "cohort"), use_container_width=True, hide_index=True)
         
     with st.expander("🏆 Top N VLs Configurable View"):
         col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
@@ -1380,7 +1417,7 @@ with tab2:
             
             df_vl = get_standard_table(tmp_tc, "vl_name")
             if not df_vl.empty:
-                st.dataframe(style_tc_dataframe(df_vl, "vl_name"), width="stretch", hide_index=True)
+                st.dataframe(style_tc_dataframe(df_vl, "vl_name"), use_container_width=True, hide_index=True)
         else:
             st.info("No Vendor Lines match the selected filters.")
 
