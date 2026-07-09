@@ -45,9 +45,11 @@ CSS = """
   --blue-b:    #2f7dd4;
 }
 
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+/* CRITICAL FIX: 
+   Removed the `*, *::before, *::after { margin: 0; padding: 0; }` wildcard reset.
+   That rule was collapsing Streamlit's native button SVGs to 0 pixels.
+*/
 
-/* FIX: Removed the aggressive [class*="css"] selector */
 html, body, .stApp {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
   background-color: var(--bg) !important;
@@ -56,57 +58,24 @@ html, body, .stApp {
   line-height: 1.5;
 }
 
-/* Explicitly style the sidebar background without hiding the toggle */
 [data-testid="stSidebar"] {
     background-color: var(--surface) !important;
 }
 
-/* Hide clutter but preserve the native sidebar toggle */
-#MainMenu, footer { display: none !important; }
-[data-testid="stToolbar"] { display: none !important; }
+#MainMenu, footer, [data-testid="stToolbar"] { display: none !important; }
 
-/* Make the header transparent without disabling pointer events so clicks register naturally */
 header[data-testid="stHeader"] {
   background-color: transparent !important;
 }
 
-/* Pin and style the native expand toggle */
-[data-testid="collapsedControl"], 
-[data-testid="stSidebarCollapsedControl"] {
-  position: fixed !important;
-  top: 15px !important;
-  left: 15px !important;
-  background-color: var(--surface2) !important;
-  border: 1px solid var(--br2) !important;
-  border-radius: 8px !important;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
-  transition: all 0.2s ease !important;
-  z-index: 999999 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  padding: 8px !important;
-  margin: 0 !important;
-  cursor: pointer !important;
-  visibility: visible !important;
-  opacity: 1 !important;
-}
-
-[data-testid="collapsedControl"]:hover,
-[data-testid="stSidebarCollapsedControl"]:hover {
-  background-color: var(--surface3) !important;
-  border-color: var(--blue) !important;
-  transform: scale(1.05) !important;
-}
-
+/* Ensure the toggle icons inherit your light text color so they don't blend into the dark bg */
 [data-testid="collapsedControl"] svg,
-[data-testid="stSidebarCollapsedControl"] svg {
-  color: #ffffff !important;
-  fill: #ffffff !important;
-  width: 24px !important;
-  height: 24px !important;
+[data-testid="stSidebarCollapseButton"] svg {
+    color: var(--text) !important;
+    fill: var(--text) !important;
 }
 
+/* The rest of your specific dashboard styling remains untouched */
 .block-container {
   padding: 2.5rem 2rem 4rem !important;
   max-width: 1440px !important;
@@ -149,7 +118,6 @@ div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
 }
 .sec-ttl-line { flex: 1; height: 1px; background: linear-gradient(90deg, var(--br2), transparent); }
 
-/* Beautiful KPI Cards */
 .kpi {
   background: var(--surface);
   border: 1px solid var(--br2);
@@ -195,7 +163,6 @@ div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
   align-items: center;
 }
 
-/* Redesigned Modern Pills */
 .pill {
   display: inline-flex;
   align-items: center;
@@ -211,7 +178,6 @@ div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
 .pz { background: var(--surface3);  color: var(--muted); border: 1px solid var(--br); }
 .pb { background: var(--blue-bg);   color: var(--blue);  border: 1px solid rgba(124, 185, 248, 0.2); }
 
-/* Sleek HTML Tables container */
 .table-container {
   background: var(--surface);
   border: 1px solid var(--br2);
@@ -256,7 +222,6 @@ div[data-testid="stVerticalBlock"] > div { gap: 0 !important; }
 .n { text-align: right; font-variant-numeric: tabular-nums; }
 .td-muted { color: var(--muted); }
 
-/* Tabs Styling */
 button[data-baseweb="tab"] {
   background: transparent !important;
   color: var(--muted) !important;
@@ -279,7 +244,6 @@ div[data-baseweb="tab-list"] {
   gap: 4px !important;
 }
 
-/* Custom RCA (AI Narrative) Styling */
 .rca-card {
   background: var(--surface);
   border: 1px solid var(--br2);
@@ -332,13 +296,8 @@ div[data-baseweb="tab-list"] {
     box-shadow: 0 2px 8px rgba(0,0,0,0.1);
 }
 
-/* Native HTML Expander for VL Drops */
-details.vl-expander summary {
-  list-style: none;
-}
-details.vl-expander summary::-webkit-details-marker {
-  display: none;
-}
+details.vl-expander summary { list-style: none; }
+details.vl-expander summary::-webkit-details-marker { display: none; }
 .exp-icon {
   display: inline-block;
   width: 16px;
@@ -347,15 +306,9 @@ details.vl-expander summary::-webkit-details-marker {
   text-align: center;
   margin-right: 4px;
 }
-details.vl-expander:not([open]) summary .exp-icon::before {
-  content: '+';
-}
-details.vl-expander[open] summary .exp-icon::before {
-  content: '−';
-}
-details.vl-expander[open] summary {
-  color: var(--blue) !important;
-}
+details.vl-expander:not([open]) summary .exp-icon::before { content: '+'; }
+details.vl-expander[open] summary .exp-icon::before { content: '−'; }
+details.vl-expander[open] summary { color: var(--blue) !important; }
 </style>
 """
 st.markdown(CSS, unsafe_allow_html=True)
