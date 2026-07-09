@@ -30,10 +30,16 @@ CSS = """
   --blue:      #7cb9f8;
 }
 
-html, body, [class*="css"], .stApp {
+/* FIX: Removed the aggressive [class*="css"] selector */
+html, body, .stApp {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
   background-color: var(--bg) !important;
   color: var(--text) !important;
+}
+
+/* Explicitly style the sidebar background without hiding the toggle */
+[data-testid="stSidebar"] {
+    background-color: var(--surface) !important;
 }
 
 .dash-header {
