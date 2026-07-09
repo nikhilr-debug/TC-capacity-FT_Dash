@@ -45,11 +45,7 @@ CSS = """
   --blue-b:    #2f7dd4;
 }
 
-/* CRITICAL FIX: 
-   Removed the `*, *::before, *::after { margin: 0; padding: 0; }` wildcard reset.
-   That rule was collapsing Streamlit's native button SVGs to 0 pixels.
-*/
-
+/* Base App Theme */
 html, body, .stApp {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
   background-color: var(--bg) !important;
@@ -58,24 +54,38 @@ html, body, .stApp {
   line-height: 1.5;
 }
 
+/* Explicitly style the sidebar background */
 [data-testid="stSidebar"] {
     background-color: var(--surface) !important;
 }
 
+/* Hide clutter */
 #MainMenu, footer, [data-testid="stToolbar"] { display: none !important; }
 
+/* Keep header transparent so the background flows through */
 header[data-testid="stHeader"] {
   background-color: transparent !important;
 }
 
-/* Ensure the toggle icons inherit your light text color so they don't blend into the dark bg */
+/* -------------------------------------------------------------------------
+   CRITICAL FIX: FORCE ALL STREAMLIT SVG ICONS TO BE WHITE
+   This ensures the expand/collapse buttons are visible against the dark bg
+------------------------------------------------------------------------- */
+header[data-testid="stHeader"] svg,
 [data-testid="collapsedControl"] svg,
-[data-testid="stSidebarCollapseButton"] svg {
-    color: var(--text) !important;
-    fill: var(--text) !important;
+[data-testid="stSidebarCollapseButton"] svg,
+button[kind="header"] svg {
+    fill: #ffffff !important;
+    color: #ffffff !important;
 }
+/* Ensure the button hover state doesn't obscure the icon */
+[data-testid="collapsedControl"]:hover,
+[data-testid="stSidebarCollapseButton"]:hover {
+    background-color: var(--surface2) !important;
+    border-radius: 8px !important;
+}
+/* ------------------------------------------------------------------------- */
 
-/* The rest of your specific dashboard styling remains untouched */
 .block-container {
   padding: 2.5rem 2rem 4rem !important;
   max-width: 1440px !important;
@@ -311,6 +321,7 @@ details.vl-expander[open] summary .exp-icon::before { content: '−'; }
 details.vl-expander[open] summary { color: var(--blue) !important; }
 </style>
 """
+
 st.markdown(CSS, unsafe_allow_html=True)
 
 PLOT_LAYOUT = dict(
