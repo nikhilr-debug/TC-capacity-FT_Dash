@@ -74,9 +74,19 @@ header[data-testid="stHeader"] button svg,
     color: #ffffff !important;
 }
 
-/* Hide clutter */
-#MainMenu, footer, [data-testid="stToolbar"] { 
-    display: none !important; 
+/* Hide clutter — but preserve the sidebar collapse/expand toggle */
+#MainMenu, footer {
+    display: none !important;
+}
+[data-testid="stToolbar"] {
+    display: none !important;
+}
+/* Restore the sidebar toggle button visibility */
+[data-testid="collapsedControl"],
+button[kind="header"] {
+    display: flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 /* ------------------------------------------------------------------------- */
 
