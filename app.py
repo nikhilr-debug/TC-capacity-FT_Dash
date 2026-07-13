@@ -67,26 +67,26 @@ header[data-testid="stHeader"] {
     background-color: transparent !important;
 }
 
-/* Ensure the native expand/collapse button icons are WHITE so they are visible on dark backgrounds */
-header[data-testid="stHeader"] button svg,
-[data-testid="stSidebar"] button svg {
+/* Hide clutter */
+#MainMenu, footer, [data-testid="stToolbar"] {
+    display: none !important;
+}
+
+/* Ensure modern Streamlit sidebar expand/collapse buttons are visible and white */
+[data-testid="stSidebarCollapsedControl"] svg,
+[data-testid="stSidebarCollapseButton"] svg,
+header[data-testid="stHeader"] button svg {
     fill: #ffffff !important;
     color: #ffffff !important;
 }
 
-/* Hide clutter — but preserve the sidebar collapse/expand toggle */
-#MainMenu, footer {
-    display: none !important;
-}
-[data-testid="stToolbar"] {
-    display: none !important;
-}
-/* Restore the sidebar toggle button visibility */
-[data-testid="collapsedControl"],
-button[kind="header"] {
+/* Force visibility on the specific containers Streamlit now uses for the toggle */
+[data-testid="stSidebarCollapsedControl"],
+[data-testid="stSidebarCollapseButton"] {
     display: flex !important;
     visibility: visible !important;
     opacity: 1 !important;
+    z-index: 99999 !important;
 }
 /* ------------------------------------------------------------------------- */
 
@@ -344,6 +344,7 @@ API_KEY = "4aFm2iOoyx8I91svQccdeZr0jmaiUsMFSRinZcmu"
 FT_API_URL = f"https://redash.vahan.link/api/queries/17613/results.json?api_key={API_KEY}"
 TC_API_URL = f"https://redash.vahan.link/api/queries/17597/results.json?api_key={API_KEY}"
 TARGETS_URL = "https://docs.google.com/spreadsheets/d/1S9XGqCiSHXjXbIrjJ6uoaDBRlTgQel__uaoc8S7zsa0/export?format=csv&gid=0"
+REGION_MAP_URL = "https://docs.google.com/spreadsheets/d/1KotqUM8d_BtKZHLjk5MhADLFgjl5tie_E3_u4yblPOQ/export?format=csv&gid=0"
 
 @st.cache_data(ttl=3600)
 def fetch_ft_data():
@@ -422,7 +423,7 @@ def fetch_targets_wtd(target_type, week_num):
         'Bigbasket': [0, 43, 43, 64, 144, 186, 333, 375, 508, 700, 918, 1000, 1200, 1383, 1463],
         'Amazon': [0, 9, 9, 13, 40, 54, 90, 104, 142, 197, 273, 320, 370, 441, 458],
         'XB': [28, 37, 37, 50, 67, 80, 128, 146, 205, 254, 331, 388, 473, 539, 586],
-        'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
+        'Maid': [80, 80, 100, 120, 120, 120, 120, 120, 120, 120, 120, 120, 150, 120],
         'Small Clients': [0, 0, 0, 20, 50, 100, 150, 200, 300, 400, 500, 550, 600, 600, 600]
     }
     vl_dict = {
@@ -523,10 +524,37 @@ def fetch_tc_targets():
         "DC": [0, 15, 40, 23, 25, 25, 20, 20, 20, 10, 0, 0, 0, 0]
     })
 
+@st.cache_data(ttl=3600)
+def fetch_region_mapping():
+    try:
+        # skiprows=2 skips row 1 and 2, making row 3 the header
+        df_map = pd.read_csv(REGION_MAP_URL, skiprows=2)
+        
+        # Normalize columns safely
+        col_map = {}
+        for c in df_map.columns:
+            cl = str(c).strip().lower()
+            if "vl_name" in cl: col_map[c] = "vl_name"
+            elif "region" in cl: col_map[c] = "region"
+            
+        df_map.rename(columns=col_map, inplace=True)
+        
+        # Keep only the mapping columns and drop duplicates
+        if "vl_name" in df_map.columns and "region" in df_map.columns:
+            return df_map[["vl_name", "region"]].dropna(subset=["vl_name"]).drop_duplicates(subset=["vl_name"])
+        return pd.DataFrame()
+    except Exception as e:
+        if "401" in str(e):
+            st.error("⚠️ **Region Mapping Error (401):** The mapping Google Sheet is Restricted. Please allow 'Anyone with the link can view'.")
+        else:
+            st.error(f"⚠️ Region Mapping Sync Error: {e}")
+        return pd.DataFrame()
+
 # ── Primary Data Load (Strictly Separated Pipelines) ──────────────────────────
 df_ft_raw = fetch_ft_data()
 df_tc_raw = fetch_tc_data()
 df_tc_targets = fetch_tc_targets()
+df_region_map = fetch_region_mapping()
 
 if df_ft_raw.empty and df_tc_raw.empty: st.stop()
 
@@ -559,6 +587,21 @@ if not df_tc_raw.empty:
 
 # ── Post-Load Pre-Processing ──────────────────────────────────────────────────
 df_base = df_ft_raw.copy()
+
+def apply_region_override(dataframe, mapping_df):
+    if mapping_df.empty or "vl_name" not in dataframe.columns:
+        return dataframe
+    
+    if "region" in dataframe.columns:
+        dataframe = dataframe.drop(columns=["region"])
+        
+    dataframe = dataframe.merge(mapping_df, on="vl_name", how="left")
+    dataframe["region"] = dataframe["region"].fillna("Unattributed")
+    return dataframe
+
+df_base = apply_region_override(df_base, df_region_map)
+df_tc_raw = apply_region_override(df_tc_raw, df_region_map)
+
 ft = "first_date_of_work"
 if ft in df_base.columns:
     df_base[ft] = pd.to_datetime(df_base[ft], errors="coerce").dt.date
@@ -682,6 +725,10 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
     if ft not in dataframe.columns: return pd.DataFrame()
     group_cols = group_key if isinstance(group_key, list) else [group_key]
     
+    missing_cols = [col for col in group_cols if col not in dataframe.columns]
+    if missing_cols:
+        return pd.DataFrame()
+    
     c = dataframe[(dataframe[ft] >= cs) & (dataframe[ft] <= ce)].groupby(group_cols).size().rename("cur")
     p = dataframe[(dataframe[ft] >= ps) & (dataframe[ft] <= pe)].groupby(group_cols).size().rename("prv")
     l4w = dataframe[(dataframe[ft] >= l4w_s) & (dataframe[ft] <= l4w_e)].groupby(group_cols).size().rename("l4w")
@@ -694,8 +741,8 @@ def compute_comparison_matrix(dataframe, group_key, target_df=None):
         res = res.groupby(group_cols, as_index=False)[['cur', 'prv', 'l4w']].sum()
 
     if target_df is not None and not target_df.empty:
-        missing_cols = [k for k in group_cols if k not in target_df.columns]
-        if not missing_cols:
+        missing_tgt_cols = [k for k in group_cols if k not in target_df.columns]
+        if not missing_tgt_cols:
             keys_to_merge = group_cols
             t_df_temp = target_df.copy()
             for k in keys_to_merge:
